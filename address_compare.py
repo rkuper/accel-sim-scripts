@@ -197,17 +197,24 @@ def get_test(path, params_str):
     best_num = len(subdirs[0].split('_'))
     for subdir in subdirs:
         subdir_list = subdir.split('_')
+
+        # Make sure that all parameters are at least in the possible test dir
         if not all(param in subdir_list for param in params):
             continue
         for param in params:
             if param not in subdir_list:
+
+                # See if this test is better than the current best one
                 if len(subdir_list) < best_num:
                     best_match = path + "/" + subdir
                     best_num = len(subdir_list)
                 break
             subdir_list.remove(param)
+
+            # This would be a perfect match
             if subdir_list == []:
                 return (path + "/" + subdir)
+
     return best_match
 
 
@@ -243,6 +250,15 @@ def arg_wrapper():
 
     get_traces(device_number, cuda_version, args.benchmark, args.params, args.start, args.end)
     get_sim_stats(cuda_version, args.benchmark, args.params, args.sass)
+    return
+
+
+
+"""
+Print the info to see what it looks like
+"""
+def print_structure():
+    pprint.pprint(kernel_traces)
     return
 
 
