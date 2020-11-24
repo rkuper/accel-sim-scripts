@@ -12,6 +12,7 @@ import sys
 import argparse
 import re
 from subprocess import Popen, PIPE
+import glob
 import pprint
 
 """""""""
@@ -25,7 +26,7 @@ sim_stats = {}
 """
 Gets addresses from the simulated stats file
 """
-def get_sim_stats():
+def get_sim_stats(cuda_version, benchmark, params, sass):
     # accel-sim-framework/sim_run_11.1/rnn_bench/train_half_8_8_1_lstm/QV100-SASS/rnn_bench-train_half_8_8_1_lstm.accelsim-commit-4c2bf09a79d6b57bb10fe1898700930a5dd5531f_modified_2.0.o30
 
     return
@@ -58,11 +59,12 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
         print("Could not find benchmark in accel-sim-framework/hw_run/traces/device-#/<CUDA>/<BENCHMARK>")
         return
 
-    # TODO: Get through grepping under each argument in params
-    params_dir = benchmark_dir + "/" + params
-    if not os.path.exists(params_dir):
+    # The actual test is a bit harder to ensure while the params are in any order
+    params_dir = get_test(benchmark_dir, params)
+    if params_dir == None:
         print("Could not find specific test in accel-sim-framework/hw_run/traces/device-#/<CUDA>/<BENCHMARK>/<TEST>")
         return
+    print("Using test: " + params_dir[params_dir.rfind('/') + 1:])
 
     traces_dir = params_dir + "/traces"
 
@@ -89,6 +91,7 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
             current_block = "0,0,0"
             current_warp = "warp-"
             with open((traces_dir + "/kernel-" + str(i) + ".traceg"), 'r', encoding = 'utf-8') as trace:
+                print("Parsing kernel " + str(i) + "...", end = '')
                 for line in trace:
                     # Gather kernel info
                     if "kernel id =" in line:
@@ -108,6 +111,7 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
                         kernel_traces[kernel_name]["grid_dim"] = grid_dim
                     elif "block dim =" in line:
                         block_xyz = line[line.index('(') + 1: len(line) - 2]
+                        block_xyz = block_xyz.split(',')
                         block_dim = (int(block_xyz[0]), int(block_xyz[1]), int(block_xyz[2]))
                         kernel_traces[kernel_name]["block_dim"] = block_dim
                         kernel_traces[kernel_name]["thread_blocks"] = {}
@@ -166,7 +170,7 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
                             address = hex(int(line_fields[9], 16))
                         kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_insts"][inst_name]["addr"] = address
                         if address != 0:
-                        kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_addrs"].append(address)
+                            kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_addrs"].append(address)
                             kernel_traces[kernel_name]["thread_blocks"][current_block]["mem_addrs"].append(address)
                             kernel_traces[kernel_name]["mem_addrs"].append(address)
 
@@ -174,16 +178,37 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
                         kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["num_mem_insts"] += 1
                         kernel_traces[kernel_name]["thread_blocks"][current_block]["num_mem_insts"] += 1
                         kernel_traces[kernel_name]["num_mem_insts"] += 1
+                print('Done')
 
     return
 
 
 
 """
-Helper for getting the specific test file for both the simulation and traces
+Get the test name given the subdirectories (depth = 1) and the params
 """
-def get_test_dir():
-    return
+def get_test(path, params_str):
+    subdirs = os.listdir(path)
+    if subdirs == []:
+        return None
+
+    params = params_str.split('_')
+    best_match = path + "/" + subdirs[0]
+    best_num = len(subdirs[0].split('_'))
+    for subdir in subdirs:
+        subdir_list = subdir.split('_')
+        if not all(param in subdir_list for param in params):
+            continue
+        for param in params:
+            if param not in subdir_list:
+                if len(subdir_list) < best_num:
+                    best_match = path + "/" + subdir
+                    best_num = len(subdir_list)
+                break
+            subdir_list.remove(param)
+            if subdir_list == []:
+                return (path + "/" + subdir)
+    return best_match
 
 
 
@@ -217,6 +242,7 @@ def arg_wrapper():
         print("End kernel should not be earlier than the starting kernel")
 
     get_traces(device_number, cuda_version, args.benchmark, args.params, args.start, args.end)
+    get_sim_stats(cuda_version, args.benchmark, args.params, args.sass)
     return
 
 
