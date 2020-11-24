@@ -29,6 +29,41 @@ Gets addresses from the simulated stats file
 def get_sim_stats(cuda_version, benchmark, params, sass):
     # accel-sim-framework/sim_run_11.1/rnn_bench/train_half_8_8_1_lstm/QV100-SASS/rnn_bench-train_half_8_8_1_lstm.accelsim-commit-4c2bf09a79d6b57bb10fe1898700930a5dd5531f_modified_2.0.o30
 
+    # Find beginning accel-sim-framework directory
+    accelsim_dir = get_accel_sim()
+    if accelsim_dir == None:
+        print("Could not find accel-sim-framework")
+        return
+
+    run_dir = accelsim_dir + "/sim_run_" + str(cuda_version)
+    if not os.path.exists(run_dir):
+        print("Could not find sim_run_<CUDA> in accel-sim-framework/sim_run_<CUDA>/. Did you simulate yet?")
+        return
+
+    benchmark_dir = run_dir + "/" + benchmark
+    if not os.path.exists(benchmark_dir):
+        print("Could not find benchmark in accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>")
+        return
+
+    # The actual test is a bit harder to ensure while the params are in any order
+    params_dir = get_test(benchmark_dir, params)
+    if params_dir == None:
+        print("Could not find specific test in accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>")
+        return
+    print("\nParsing Simulation Output\n=========================")
+    print("Using test: " + params_dir[params_dir.rfind('/') + 1:])
+
+    sass_dir = params_dir + "/" + sass + "-SASS"
+    if not os.path.exists(sass_dir):
+        print("Could not find sass in accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>/<SASS>")
+        return
+
+    # Now getting the specific test simulation output
+    sim_file = get_test(sass_dir, (benchmark + "_" + params))
+    if sim_file == None:
+        print("Could not find simulation log in accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>/<SASS>/<LOG>")
+        return
+
     return
 
 
@@ -38,8 +73,7 @@ Gets addresses of all specified trace files
 """
 def get_traces(device_number, cuda_version, benchmark, params, start, end):
     # Find beginning accel-sim-framework directory
-    find = Popen(['find', '../', '-maxdepth', '4', '-name', 'accel-sim-framework'], stdout = PIPE)
-    accelsim_dir = find.communicate()[0].decode('ascii').rstrip()
+    accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
         print("Could not find accel-sim-framework")
         return
@@ -64,6 +98,7 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
     if params_dir == None:
         print("Could not find specific test in accel-sim-framework/hw_run/traces/device-#/<CUDA>/<BENCHMARK>/<TEST>")
         return
+    print("\nParsing Kernel Traces\n=====================")
     print("Using test: " + params_dir[params_dir.rfind('/') + 1:])
 
     traces_dir = params_dir + "/traces"
@@ -185,6 +220,16 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
 
 
 """
+Get accel-sim directory path
+"""
+def get_accel_sim():
+    find = Popen(['find', '../', '-maxdepth', '4', '-name', 'accel-sim-framework'], stdout = PIPE)
+    accelsim_dir = find.communicate()[0].decode('ascii').rstrip()
+    return accelsim_dir
+
+
+
+"""
 Get the test name given the subdirectories (depth = 1) and the params
 """
 def get_test(path, params_str):
@@ -192,11 +237,19 @@ def get_test(path, params_str):
     if subdirs == []:
         return None
 
-    params = params_str.split('_')
-    best_match = path + "/" + subdirs[0]
-    best_num = len(subdirs[0].split('_'))
+    # Sort by size of file
+    subdirs_full = []
     for subdir in subdirs:
-        subdir_list = subdir.split('_')
+        subdirs_full.append((path + '/' + subdir))
+    subdirs_full = sorted(subdirs_full, key=os.path.getsize, reverse=True)
+    subdirs = [s[s.rfind('/') + 1:] for s in subdirs_full]
+
+    # Default values then search each file/subdir
+    params = re.split('_|-', params_str)
+    best_match = path + "/" + subdirs[0]
+    best_num = len(re.split('_|-',subdirs[0]))
+    for subdir in subdirs:
+        subdir_list = re.split('_|-', subdir)
 
         # Make sure that all parameters are at least in the possible test dir
         if not all(param in subdir_list for param in params):
