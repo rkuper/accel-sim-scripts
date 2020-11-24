@@ -23,7 +23,17 @@ sim_stats = {}
 
 
 """
-Larger wrapper for obtaining trace addresses
+Gets addresses from the simulated stats file
+"""
+def get_sim_stats():
+    # accel-sim-framework/sim_run_11.1/rnn_bench/train_half_8_8_1_lstm/QV100-SASS/rnn_bench-train_half_8_8_1_lstm.accelsim-commit-4c2bf09a79d6b57bb10fe1898700930a5dd5531f_modified_2.0.o30
+
+    return
+
+
+
+"""
+Gets addresses of all specified trace files
 """
 def get_traces(device_number, cuda_version, benchmark, params, start, end):
     # Find beginning accel-sim-framework directory
@@ -36,19 +46,23 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
     device_dir = accelsim_dir + "/hw_run/traces/device-" + str(device_number)
     if not os.path.exists(device_dir):
         print("Could not find GPU device number in accel-sim-framework/hw_run/traces/device-#")
+        return
 
     cuda_dir = device_dir + "/" + str(cuda_version)
     if not os.path.exists(cuda_dir):
         print("Could not find cuda version in accel-sim-framework/hw_run/traces/device-#/<CUDA>")
+        return
 
     benchmark_dir = cuda_dir + "/" + benchmark
     if not os.path.exists(benchmark_dir):
         print("Could not find benchmark in accel-sim-framework/hw_run/traces/device-#/<CUDA>/<BENCHMARK>")
+        return
 
     # TODO: Get through grepping under each argument in params
     params_dir = benchmark_dir + "/" + params
     if not os.path.exists(params_dir):
         print("Could not find specific test in accel-sim-framework/hw_run/traces/device-#/<CUDA>/<BENCHMARK>/<TEST>")
+        return
 
     traces_dir = params_dir + "/traces"
 
@@ -166,12 +180,21 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
 
 
 """
+Helper for getting the specific test file for both the simulation and traces
+"""
+def get_test_dir():
+    return
+
+
+
+"""
 Parse the arguments, then run through tracer
 """
 def arg_wrapper():
     parser = argparse.ArgumentParser()
     parser.add_argument("-b", "--benchmark", help = "Specify the benchmark (ex. rnn_bench from Deepbench)")
     parser.add_argument("-p", "--params", help = "Specify the benchmark parameters delimited by '_' (ex. train_half_8_8_1_lstm)")
+    parser.add_argument("-a", "--sass", help = "Specify the SASS that the traces used (ex. QV100)")
     parser.add_argument("-s", "--start", help = "Which kernel to start tracing from", default=0)
     parser.add_argument("-e", "--end", help = "Which kernel to end tracing on", default=float('inf'))
     args = parser.parse_args()
@@ -202,5 +225,4 @@ def arg_wrapper():
 Main state
 """
 if __name__=="__main__":
-
     arg_wrapper()
