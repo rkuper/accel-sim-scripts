@@ -27,8 +27,6 @@ sim_stats = {}
 Gets addresses from the simulated stats file
 """
 def get_sim_stats(cuda_version, benchmark, params, sass):
-    # accel-sim-framework/sim_run_11.1/rnn_bench/train_half_8_8_1_lstm/QV100-SASS/rnn_bench-train_half_8_8_1_lstm.accelsim-commit-4c2bf09a79d6b57bb10fe1898700930a5dd5531f_modified_2.0.o30
-
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
