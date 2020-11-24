@@ -62,6 +62,10 @@ def get_sim_stats(cuda_version, benchmark, params, sass):
         print("Could not find simulation log in accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>/<SASS>/<LOG>")
         return
 
+    # Begin parsing the sim output
+    with open(sim_file, 'r', encoding = 'utf-8') as sim_file:
+        for line in sim_file:
+
     return
 
 
