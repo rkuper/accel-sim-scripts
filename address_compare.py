@@ -63,9 +63,66 @@ def get_sim_stats(cuda_version, benchmark, params, sass):
         return
 
     # Begin parsing the sim output
+    # Get kernel info
+    temp_kernel_name = ""
+    kernel_id = 0
+    kernel_name = "kernel-"
     with open(sim_file, 'r', encoding = 'utf-8') as sim_file:
         for line in sim_file:
+            # Gather kernel info
+            if "kernel id =" in line:
+                if kernel_name != "kernel-":
+                    print(' Done')
+                kernel_id = int(line.split(' ')[-1])
+                kernel_name = kernel_name + str(kernel_id)
+                sim_stats[kernel_name] = {}
+                sim_stats[kernel_name]["id"] = kernel_id
+                sim_stats[kernel_name]["mem_addrs"] = []
+                sim_stats[kernel_name]["num_insts"] = 0
+                sim_stats[kernel_name]["num_mem_insts"] = 0
+                sim_stats[kernel_name]["mem_insts"] = {}
+                print("Parsing kernel " + str(kernel_id) + "...", end = '')
+            elif "gpu_sim_cycle" in line:
+                sim_stats[kernel_name]["num_insts"] = int(line.split(' ')[-1])
+            elif "kernel name =" in line:
+                temp_kernel_name = line.split(' ')[-1]
+            elif "grid dim =" in line:
+                grid_xyz = line[line.index('(') + 1: len(line) - 2]
+                grid_xyz = grid_xyz.split(',')
+                grid_dim = (int(grid_xyz[0]), int(grid_xyz[1]), int(grid_xyz[2]))
+                sim_stats[kernel_name]["grid_dim"] = grid_dim
+            elif "block dim =" in line:
+                block_xyz = line[line.index('(') + 1: len(line) - 2]
+                block_xyz = block_xyz.split(',')
+                block_dim = (int(block_xyz[0]), int(block_xyz[1]), int(block_xyz[2]))
+                sim_stats[kernel_name]["block_dim"] = block_dim
+                sim_stats[kernel_name]["thread_blocks"] = {}
+            elif "local mem base_addr =" in line:
+                sim_stats[kernel_name]["local_mem_base_addr"] = (line.split(' ')[-1]).rstrip()
 
+            # Begin parsing mem instructions
+            elif "mf:" in line:
+
+                # Grab only the global memory instructions
+                if 'GLOBAL' not in line:
+                    continue
+
+                # Clean up the list a little bit
+                line_fields = line.strip().replace(',', '').split(' ')
+                if '' in line_fields:
+                    line_fields.remove('')
+
+                sim_stats[kernel_name]["line"] = line.strip()
+                sim_stats[kernel_name]["pc"] = line_fields[13]
+                sim_stats[kernel_name]["type"] = line_fields[6]
+                sim_stats[kernel_name]["mask"] = line_fields[14][line_fields[14].index('[') + 1:line_fields[14].index(']') - 1]
+                sim_stats[kernel_name]["warp"] = line_fields[3][line_fields[3].index('w') + 1:]
+                # sim_stats[kernel_name]["address"] = line_fields[]
+                # sim_stats["mem_addr"] = line_fields[]
+
+
+                # sim_stats[kernel_name]["mem_insts"]
+        print(' Done')
     return
 
 
@@ -124,7 +181,6 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
             temp_kernel_name = ""
             kernel_id = 0
             kernel_name = "kernel-"
-            trace_inst_cnt = 0
             current_block = "0,0,0"
             current_warp = "warp-"
             with open((traces_dir + "/kernel-" + str(i) + ".traceg"), 'r', encoding = 'utf-8') as trace:
@@ -152,12 +208,6 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
                         block_dim = (int(block_xyz[0]), int(block_xyz[1]), int(block_xyz[2]))
                         kernel_traces[kernel_name]["block_dim"] = block_dim
                         kernel_traces[kernel_name]["thread_blocks"] = {}
-                    elif "shmem =" in line:
-                        kernel_traces[kernel_name]["shmem"] = (line.split(' ')[-1]).rstrip()
-                    elif "nregs =" in line:
-                        kernel_traces[kernel_name]["nregs"] = (line.split(' ')[-1]).rstrip()
-                    elif "shmem base_addr =" in line:
-                        kernel_traces[kernel_name]["shmem_base_addr"] = (line.split(' ')[-1]).rstrip()
                     elif "local mem base_addr =" in line:
                         kernel_traces[kernel_name]["local_mem_base_addr"] = (line.split(' ')[-1]).rstrip()
 
@@ -182,7 +232,7 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
                         kernel_traces[kernel_name]["num_insts"] += warp_insts
 
                     # Start the actual instruction parsing
-                    elif "LD" in line or "ST" in line:
+                    elif "LDG" in line or "STG" in line:
                         # Add line
                         line_fields = line.split(' ')
                         inst_name = kernel_name + "_0x" + line_fields[0]
@@ -194,17 +244,15 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
                         kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_insts"][inst_name]["mask"] = hex(int(line_fields[1], 16))
 
                         # Add memory instruction type
-                        inst_type = ""
-                        if "LD" in line:
-                            inst_type = line_fields[4].split('.')[0]
+                        mem_type = ""
+                        if "LDG" in line:
+                            mem_type = line_fields[4].split('.')[0]
                         else:
-                            inst_type = line_fields[3].split('.')[0]
-                        kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_insts"][inst_name]["type"] = inst_type
+                            mem_type = line_fields[3].split('.')[0]
+                        kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_insts"][inst_name]["type"] = mem_type
 
                         # Add address info
-                        address = hex(0)
-                        if inst_type != "LDC":
-                            address = hex(int(line_fields[9], 16))
+                        address = hex(int(line_fields[9], 16))
                         kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_insts"][inst_name]["addr"] = address
                         if address != 0:
                             kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_addrs"].append(address)
@@ -215,7 +263,7 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end):
                         kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["num_mem_insts"] += 1
                         kernel_traces[kernel_name]["thread_blocks"][current_block]["num_mem_insts"] += 1
                         kernel_traces[kernel_name]["num_mem_insts"] += 1
-                print('Done')
+                print(' Done')
 
     return
 
@@ -282,8 +330,8 @@ def arg_wrapper():
     parser.add_argument("-b", "--benchmark", help = "Specify the benchmark (ex. rnn_bench from Deepbench)")
     parser.add_argument("-p", "--params", help = "Specify the benchmark parameters delimited by '_' (ex. train_half_8_8_1_lstm)")
     parser.add_argument("-a", "--sass", help = "Specify the SASS that the traces used (ex. QV100)")
-    parser.add_argument("-s", "--start", help = "Which kernel to start tracing from", default=0)
-    parser.add_argument("-e", "--end", help = "Which kernel to end tracing on", default=float('inf'))
+    parser.add_argument("-s", "--start", help = "Which kernel to start parsing from", default=0)
+    parser.add_argument("-e", "--end", help = "Which kernel to end parsing on", default=float('inf'))
     args = parser.parse_args()
 
     # Get the GPU device number
@@ -292,19 +340,22 @@ def arg_wrapper():
     cut_col = Popen(['cut', '-d', ':', '-f', '2'], stdin = grep.stdout, stdout = PIPE)
     cut_space = Popen(['cut', '-d', ' ', '-f', '1'], stdin = cut_col.stdout, stdout = PIPE)
     cut_dec = Popen(['cut', '-d', '.', '-f', '1'], stdin = cut_col.stdout, stdout = PIPE)
-    # device_number = int(float(cut_dec.communicate()[0].decode('ascii').rstrip()))
     device_number = cut_dec.communicate()[0].decode('ascii').rstrip()
     device_number = 0 if device_number == '' else int(device_number)
 
     # Get the cuda version for pathing
     cuda_version = os.getenv('CUDA_INSTALL_PATH').split('-')[-1]
 
+    # Get the SASS ISA
+    sass = 'QV100' if (args.sass == None) else args.sass
+
+
     # Make sure the kernel values are normal
     if args.end < args.start:
         print("End kernel should not be earlier than the starting kernel")
 
     get_traces(device_number, cuda_version, args.benchmark, args.params, args.start, args.end)
-    get_sim_stats(cuda_version, args.benchmark, args.params, args.sass)
+    get_sim_stats(cuda_version, args.benchmark, args.params, sass)
     return
 
 
