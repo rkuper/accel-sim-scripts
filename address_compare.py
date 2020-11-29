@@ -24,6 +24,14 @@ sim_stats = {}
 
 
 """
+Combine addresses from sim and traces to get word offset
+"""
+def combine_addresses():
+    return
+
+
+
+"""
 Gets addresses from the simulated stats file
 """
 def get_sim_stats(cuda_version, benchmark, params, sass):
@@ -74,11 +82,10 @@ def get_sim_stats(cuda_version, benchmark, params, sass):
                 if kernel_name != "kernel-":
                     print(' Done')
                 kernel_id = int(line.split(' ')[-1])
-                kernel_name = kernel_name + str(kernel_id)
+                kernel_name = "kernel-" + str(kernel_id)
                 sim_stats[kernel_name] = {}
                 sim_stats[kernel_name]["id"] = kernel_id
                 sim_stats[kernel_name]["mem_addrs"] = []
-                sim_stats[kernel_name]["num_insts"] = 0
                 sim_stats[kernel_name]["num_mem_insts"] = 0
                 sim_stats[kernel_name]["mem_insts"] = {}
                 print("Parsing kernel " + str(kernel_id) + "...", end = '')
@@ -96,7 +103,6 @@ def get_sim_stats(cuda_version, benchmark, params, sass):
                 block_xyz = block_xyz.split(',')
                 block_dim = (int(block_xyz[0]), int(block_xyz[1]), int(block_xyz[2]))
                 sim_stats[kernel_name]["block_dim"] = block_dim
-                sim_stats[kernel_name]["thread_blocks"] = {}
             elif "local mem base_addr =" in line:
                 sim_stats[kernel_name]["local_mem_base_addr"] = (line.split(' ')[-1]).rstrip()
 
@@ -112,16 +118,24 @@ def get_sim_stats(cuda_version, benchmark, params, sass):
                 if '' in line_fields:
                     line_fields.remove('')
 
-                sim_stats[kernel_name]["line"] = line.strip()
-                sim_stats[kernel_name]["pc"] = line_fields[13]
-                sim_stats[kernel_name]["type"] = line_fields[6]
-                sim_stats[kernel_name]["mask"] = line_fields[14][line_fields[14].index('[') + 1:line_fields[14].index(']') - 1]
-                sim_stats[kernel_name]["warp"] = line_fields[3][line_fields[3].index('w') + 1:]
-                # sim_stats[kernel_name]["address"] = line_fields[]
-                # sim_stats["mem_addr"] = line_fields[]
+                inst_id = kernel_name + '_' + str(line_fields[13])
+                sim_stats[kernel_name]["mem_insts"][inst_id] = {}
+                sim_stats[kernel_name]["mem_insts"][inst_id]["line"] = line.strip()
 
+                # Add all important fields
+                sim_stats[kernel_name]["mem_insts"][inst_id]["pc"] = hex(int(line_fields[13], 16))
+                sim_stats[kernel_name]["mem_insts"][inst_id]["type"] = line_fields[6]
+                sim_stats[kernel_name]["mem_insts"][inst_id]["mask"] = line_fields[14][line_fields[14].index('[') + 1:line_fields[14].index(']') - 1]
+                sim_stats[kernel_name]["mem_insts"][inst_id]["warp"] = line_fields[3][line_fields[3].index('w') + 1:]
 
-                # sim_stats[kernel_name]["mem_insts"]
+                # Add the address and set to hex
+                address = hex(int(line_fields[5][line_fields[5].index('=') + 1:], 16))
+                sim_stats[kernel_name]["mem_insts"][inst_id]["address"] = address
+                sim_stats[kernel_name]["mem_addrs"].append(address)
+
+                # Increment counters
+                sim_stats[kernel_name]["num_mem_insts"] += 1
+
         print(' Done')
     return
 
@@ -363,7 +377,16 @@ def arg_wrapper():
 """
 Print the info to see what it looks like
 """
-def print_structure():
+def print_sim():
+    pprint.pprint(sim_stats)
+    return
+
+
+
+"""
+Print the info to see what it looks like
+"""
+def print_trace():
     pprint.pprint(kernel_traces)
     return
 
