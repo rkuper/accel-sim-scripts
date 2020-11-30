@@ -304,9 +304,11 @@ def get_traces(device_number, cuda_version, benchmark, params, start, end, debug
                         # Add memory instruction type
                         mem_type = ""
                         if "LDG" in line:
-                            mem_type = line_fields[4].split('.')[0]
+                            # mem_type = line_fields[4].split('.')[0]
+                            mem_type = 'load'
                         else:
-                            mem_type = line_fields[3].split('.')[0]
+                            # mem_type = line_fields[3].split('.')[0]
+                            mem_type = 'store'
                         kernel_traces[kernel_name]["thread_blocks"][current_block]["warps"][current_warp]["mem_insts"][inst_name]["type"] = mem_type
 
                         # Add address info
@@ -416,6 +418,30 @@ def arg_wrapper():
     get_sim_stats(cuda_version, args.benchmark, args.params, sass, int(args.start), args.end, args.debug)
     return
 
+
+
+"""
+Print the specific instruction in both sim output and trace
+"""
+def print_inst(kernel, pc):
+    kernel_name = "kernel-" + str(kernel)
+    inst_name = kernel_name + "_" + str(hex(pc))
+
+    print("\nKernel Trace for: " + inst_name)
+    print("==================================")
+    for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
+        for warp in kernel_traces[kernel_name]["thread_blocks"][thread_block]["warps"]:
+            for mem_inst in kernel_traces[kernel_name]["thread_blocks"][thread_block]["warps"][warp]["mem_insts"]:
+                if mem_inst == inst_name:
+                    print(str(warp) + " ", end = '')
+                    pprint.pprint(kernel_traces[kernel_name]["thread_blocks"][thread_block]["warps"][warp]["mem_insts"][mem_inst])
+
+    print("\nSimulation Output for: " + inst_name)
+    print("=======================================")
+    for mem_inst in sim_stats[kernel_name]["mem_insts"]:
+        if mem_inst == inst_name:
+            pprint.pprint(sim_stats[kernel_name]["mem_insts"][mem_inst])
+    return
 
 
 """
