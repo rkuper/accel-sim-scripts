@@ -14,6 +14,7 @@ import re
 from subprocess import Popen, PIPE
 import glob
 import pprint
+import json
 
 """""""""
 GLOBALS
@@ -454,6 +455,7 @@ def arg_wrapper():
     parser.add_argument("-s", "--start", help = "Which kernel to start parsing from", default=0)
     parser.add_argument("-e", "--end", help = "Which kernel to end parsing on", default=float('inf'))
     parser.add_argument("-d", "--debug", help = "data contains line the data was obtained from", action='store_true')
+    parser.add_argument("-j", "--json", help = "output kernel_traces to json file (kernel_traces.json)", action='store_true')
     args = parser.parse_args()
 
     # Get the GPU device number
@@ -482,6 +484,12 @@ def arg_wrapper():
 
     # Manage sim output
     get_sim_stats(cuda_version, args.benchmark, args.params, sass, int(args.start), args.end, args.debug)
+
+    # Output to .json file
+    if args.json:
+        with open('kernel_traces.json','w') as fp:
+            json.dump(kernel_traces, fp)
+
     return
 
 
