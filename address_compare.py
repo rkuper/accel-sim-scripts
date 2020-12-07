@@ -42,6 +42,7 @@ def trace_dependencies(start, end):
         return
 
     print('Grabbing trace threadblock dependencies...', end = ' ')
+    sys.stdout.flush()
 
     # Per threadblock within each kernel, check for warps that contain similar addresses
     for current_kernel in range(start, end):
@@ -69,8 +70,7 @@ def trace_dependencies(start, end):
             # Remove independent blocks
             if len(kernel_traces[current_kernel_name]["dependencies"][current_block_name]) == 0:
                 del kernel_traces[current_kernel_name]["dependencies"][current_block_name]
-
-            if len(kernel_traces[current_kernel_name]["dependencies"]) != 0:
+            else:
                 kernel_traces[current_kernel_name]["dependencies"][current_block_name] = sorted(kernel_traces[current_kernel_name]["dependencies"][current_block_name])
 
     print('Done')
