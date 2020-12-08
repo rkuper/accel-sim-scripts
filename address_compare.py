@@ -56,17 +56,31 @@ def trace_dependencies(start, end):
 
             for current_address in kernel_traces[current_kernel_name]["thread_blocks"][current_block]["mem_addrs"]:
 
-                # Go through each future kernel and look for dependent thread blocks
-                for future_kernel in range(current_kernel + 1, end):
-                    future_kernel_name = 'kernel-' + str(future_kernel)
-                    for future_block in kernel_traces[future_kernel_name]["thread_blocks"]:
-                        future_block_name = future_kernel_name + '_' + str(future_block)
-                        for future_address in kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"]:
+                # Go through following kernel and look for dependent thread blocks
+                future_kernel_name = current_kernel_name
+                if current_kernel != (end - 1):
+                    future_kernel_name = 'kernel-' + str((current_kernel + 1))
 
-                            # Determine if address is too similar (assume block size of a byte?)
-                            if ((int(current_address, 16) & 0xFFFFFFB0) == (int(future_address, 16) & 0xFFFFFFB0)) and (future_block_name not in kernel_traces[current_kernel_name]["dependencies"][current_block_name]):
-                                kernel_traces[current_kernel_name]["dependencies"][current_block_name].append(future_block_name)
-                                break
+                for future_block in kernel_traces[future_kernel_name]["thread_blocks"]:
+                    future_block_name = future_kernel_name + '_' + str(future_block)
+                    for future_address in kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"]:
+
+                        # Determine if address is too similar (assume block size of a byte?)
+                        if ((int(current_address, 16) & 0xFFFFFFB0) == (int(future_address, 16) & 0xFFFFFFB0)) and (future_block_name not in kernel_traces[current_kernel_name]["dependencies"][current_block_name]):
+                            kernel_traces[current_kernel_name]["dependencies"][current_block_name].append(future_block_name)
+                            break
+
+                ## Covers all subsequent kernels - takes FOREVER
+                # for future_kernel in range(current_kernel + 1, end):
+                #     future_kernel_name = 'kernel-' + str(future_kernel)
+                #     for future_block in kernel_traces[future_kernel_name]["thread_blocks"]:
+                #         future_block_name = future_kernel_name + '_' + str(future_block)
+                #         for future_address in kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"]:
+
+                #             # Determine if address is too similar (assume block size of a byte?)
+                #             if ((int(current_address, 16) & 0xFFFFFFB0) == (int(future_address, 16) & 0xFFFFFFB0)) and (future_block_name not in kernel_traces[current_kernel_name]["dependencies"][current_block_name]):
+                #                 kernel_traces[current_kernel_name]["dependencies"][current_block_name].append(future_block_name)
+                #                 break
 
             # Remove independent blocks
             if len(kernel_traces[current_kernel_name]["dependencies"][current_block_name]) == 0:
