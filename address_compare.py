@@ -28,12 +28,23 @@ sim_stats = {}
 """
 Prints stats about the kernel traces
 """
-def print_trace_stats():
+def print_trace_stats(start, end, graph):
     print("\nDependency Stats\n================")
+    trace_dependencies(start, end)
+    if graph:
+        tbd_graph = Digraph(comment='Kernel Trace Dependencies')
+        tbd_graph = graph_dependencies(start, end, tbd_graph)
+        tbd_graph.render('kernel_dependencies.gv')
 
-    # for
+    # TODO:
+    # Find number of indendent thread blocks per kernel
+    # Find most dependent kernel AND threadblock
+    for kernel in range(start, end):
+        kernel_name = 'kernel-' + str(kernel)
+        print("Number of dependent thread_blocks in " + kernel_name + ":", end = ' ')
+        print(str(len(kernel_traces[kernel_name]["dependencies"])), end = '')
+        print("/" + str(len(kernel_traces[kernel_name]["thread_blocks"])))
     indendent_blocks = 0
-
     return
 
 
@@ -98,7 +109,7 @@ def trace_dependencies(start, end):
                     for future_address in kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"]:
 
                         # Determine if address is too similar (assume block size of a byte?)
-                        if ((int(current_address, 16) & 0xFFFFFFB0) == (int(future_address, 16) & 0xFFFFFFB0)) and (future_block_name not in kernel_traces[current_kernel_name]["dependencies"][current_block_name]):
+                        if (current_block_name != future_block_name) and ((int(current_address, 16) & 0xFFFFFFB0) == (int(future_address, 16) & 0xFFFFFFB0)) and (future_block_name not in kernel_traces[current_kernel_name]["dependencies"][current_block_name]):
                             kernel_traces[current_kernel_name]["dependencies"][current_block_name].append(future_block_name)
                             break
 
@@ -532,12 +543,7 @@ def arg_wrapper():
     get_sim_stats(cuda_version, args.benchmark, args.params, sass, int(args.start), args.end, args.debug)
 
     # Manage trace stats
-    print_trace_stats()
-    trace_dependencies(start_kernel, end_kernel)
-    if args.graph:
-        tbd_graph = Digraph(comment='Kernel Trace Dependencies')
-        tbd_graph = graph_dependencies(start_kernel, end_kernel, tbd_graph)
-        tbd_graph.render('kernel_dependencies.gv')
+    print_trace_stats(start_kernel, end_kernel, args.graph)
 
     # Output to .json file
     if args.json:
