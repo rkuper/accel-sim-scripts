@@ -15,6 +15,7 @@ from subprocess import Popen, PIPE
 import glob
 import pprint
 import json
+from graphviz import Digraph
 
 """""""""
 GLOBALS
@@ -25,11 +26,42 @@ sim_stats = {}
 
 
 """
-Deeper dependency check (goes through direct dependencies and then adds the indirect, followthrough dependencies)
+Prints stats about the kernel traces
 """
-def deepen_trace_dependencies():
+def print_trace_stats():
+    print("\nDependency Stats\n================")
+
+    # for
+    indendent_blocks = 0
 
     return
+
+
+
+"""
+Graph dependencies using graph-viz's Digraph
+"""
+def graph_dependencies(start, end, tbd):
+    print('Creating trace dependency graph...', end = ' ')
+    sys.stdout.flush()
+
+    # Add basic kernel names and threadblocks to graph
+    for kernel in range(start, end):
+        kernel_name = 'kernel-' + str(kernel)
+        tbd.node(kernel_name, kernel_name)
+        for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
+            tbd.node(kernel_name + '_' + thread_block, thread_block)
+            tbd.edge(kernel_name, kernel_name + '_' + thread_block)
+
+    # Add kernel dependencies
+    for kernel in range(start, end):
+        kernel_name = 'kernel-' + str(kernel)
+        for block_depend in kernel_traces[kernel_name]["dependencies"]:
+            for dependency in kernel_traces[kernel_name]["dependencies"][block_depend]:
+                tbd.edge(block_depend, dependency)
+
+    print('Done')
+    return tbd
 
 
 
@@ -468,8 +500,9 @@ def arg_wrapper():
     parser.add_argument("-a", "--sass", help = "Specify the SASS that the traces used (ex. QV100)")
     parser.add_argument("-s", "--start", help = "Which kernel to start parsing from", default=0)
     parser.add_argument("-e", "--end", help = "Which kernel to end parsing on", default=float('inf'))
-    parser.add_argument("-d", "--debug", help = "data contains line the data was obtained from", action='store_true')
-    parser.add_argument("-j", "--json", help = "output kernel_traces to json file (kernel_traces.json)", action='store_true')
+    parser.add_argument("-d", "--debug", help = "Data contains line the data was obtained from", action='store_true')
+    parser.add_argument("-j", "--json", help = "Output kernel_traces to json file (kernel_traces.json)", action='store_true')
+    parser.add_argument("-g", "--graph", help = "Output a graph of all kernel dependencies found", action='store_true')
     args = parser.parse_args()
 
     # Get the GPU device number
@@ -494,10 +527,17 @@ def arg_wrapper():
 
     # Manage kernel traces
     (start_kernel, end_kernel) = get_traces(device_number, cuda_version, args.benchmark, args.params, int(args.start), args.end, args.debug)
-    trace_dependencies(start_kernel, end_kernel)
 
     # Manage sim output
     get_sim_stats(cuda_version, args.benchmark, args.params, sass, int(args.start), args.end, args.debug)
+
+    # Manage trace stats
+    print_trace_stats()
+    trace_dependencies(start_kernel, end_kernel)
+    if args.graph:
+        tbd_graph = Digraph(comment='Kernel Trace Dependencies')
+        tbd_graph = graph_dependencies(start_kernel, end_kernel, tbd_graph)
+        tbd_graph.render('kernel_dependencies.gv')
 
     # Output to .json file
     if args.json:
