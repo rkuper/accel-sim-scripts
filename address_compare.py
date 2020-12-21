@@ -46,8 +46,11 @@ def arg_wrapper():
     device_number = cut_dec.communicate()[0].decode('ascii').rstrip()
     device_number = 0 if device_number == '' else int(device_number)
 
+    # FIXME Set to 0 for debugging, NOT for normal use :/
+    device_number = 0
+
     # Get the cuda version for pathing
-    cuda_version = os.getenv('CUDA_INSTALL_PATH').split('-')[-1]
+    cuda_version = '11.1' if os.getenv('CUDA_INSTALL_PATH') == None else os.getenv('CUDA_INSTALL_PATH').split('-')[-1]
 
     # Get the SASS ISA
     sass = 'QV100' if (args.sass == None) else args.sass
@@ -123,7 +126,7 @@ def get_traces(device_number, cuda_version, benchmark, test, start, end, line_de
         number_of_kernels = sum('kernel-' in s for s in files)
         for kernel in files:
             if len(re.findall("\d+", kernel)) > 0:
-                kernel_numbers.append(re.findall("\d+", kernel)[0])
+                kernel_numbers.append(int(re.findall("\d+", kernel)[0]))
 
         if len(kernel_numbers) == 0:
             print('No Traces Found')
