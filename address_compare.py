@@ -15,6 +15,7 @@ from subprocess import Popen, PIPE
 import glob
 import pprint
 import json
+import graphviz as gv
 from graphviz import Digraph
 
 """""""""
@@ -22,6 +23,9 @@ from graphviz import Digraph
 """""""""
 kernel_traces = {}
 sim_stats = {}
+start_kernel = 0
+end_kernel = float('inf')
+tbd_graph = Digraph(comment='Kernel Trace Dependencies', strict=True)
 
 
 def arg_wrapper():
@@ -62,17 +66,22 @@ def arg_wrapper():
     # Make sure depth is not bad
     depth = 1 if int(args.depth) < 1 else int(args.depth)
 
+    # Get global values for starting and ending kernel traces
+    global start_kernel, end_kernel
+    start_kernel = int(args.start)
+    end_kernel = float('inf') if args.end == float('inf') else int(args.end)
+
     # Manage kernel traces
-    (start_kernel, end_kernel) = get_traces(device_number, cuda_version, args.benchmark, args.test, int(args.start), args.end, args.line_debug, depth)
+    get_traces(device_number, cuda_version, args.benchmark, args.test, args.line_debug, depth)
 
     # Manage sim output
-    get_sim_stats(cuda_version, args.benchmark, args.test, sass, int(args.start), args.end, args.line_debug)
+    get_sim_stats(cuda_version, args.benchmark, args.test, sass, args.line_debug)
 
     # Manage trace stats
-    print_trace_stats(start_kernel, end_kernel, args.graph)
+    print_trace_stats(args.graph)
 
     # Print kernel names
-    print_kernel_names(start_kernel, end_kernel)
+    print_kernel_names()
 
     # Output to .json file
     if args.json:
@@ -83,7 +92,7 @@ def arg_wrapper():
 
 
 
-def get_traces(device_number, cuda_version, benchmark, test, start, end, line_debug, depth):
+def get_traces(device_number, cuda_version, benchmark, test, line_debug, depth):
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
@@ -118,8 +127,6 @@ def get_traces(device_number, cuda_version, benchmark, test, start, end, line_de
     # Kernel numbers help get a list of all the kernels traced
     kernel_numbers = []
     kernel_offset = 0
-    start_kernel = 0
-    end_kernel = float('inf')
     for subdir, dirs, files in os.walk(traces_dir):
 
         # Get the kernel numbers and the first traced kernel for the offset
@@ -133,10 +140,11 @@ def get_traces(device_number, cuda_version, benchmark, test, start, end, line_de
             return 0, 0
 
         # Get kernel ranges
+        global start_kernel, end_kernel
         kernel_offset = int((sorted(kernel_numbers)[0]))
-        start_kernel = max(start, kernel_offset)
+        start_kernel = max(start_kernel, kernel_offset)
         last_kernel = number_of_kernels + kernel_offset
-        end_kernel = last_kernel if end == float('inf') else min(last_kernel, (int(end) + 1))
+        end_kernel = last_kernel if end_kernel == float('inf') else min(last_kernel, (end_kernel + 1))
 
         # Begin parsing each trace
         for i in range(start_kernel, end_kernel):
@@ -254,22 +262,22 @@ def get_traces(device_number, cuda_version, benchmark, test, start, end, line_de
                         kernel_traces[kernel_name]["num_mem_insts"] += 1
 
                 print('Done')
-        trace_dependencies(start_kernel, end_kernel, depth)
-    return start_kernel, end_kernel
+        trace_dependencies(depth)
+    return
 
 
 
-def trace_dependencies(start, end, depth):
+def trace_dependencies(depth):
     dependencies = {}
 
-    if start == (end - 1):
+    if start_kernel == (end_kernel - 1):
         return
 
     print('Grabbing dependencies...', end = ' ')
     sys.stdout.flush()
 
     # Per threadblock within each kernel, check for warps that contain similar addresses
-    for current_kernel in range(start, end):
+    for current_kernel in range(start_kernel, end_kernel):
         current_kernel_name = 'kernel-' + str(current_kernel)
         for current_block in kernel_traces[current_kernel_name]["thread_blocks"]:
 
@@ -280,7 +288,7 @@ def trace_dependencies(start, end, depth):
             for current_address in kernel_traces[current_kernel_name]["thread_blocks"][current_block]["mem_addrs"]:
 
                 # Covers all subsequent kernels - takes FOREVER
-                for future_kernel in range(current_kernel + 1, min(current_kernel + depth + 1, end)):
+                for future_kernel in range(current_kernel + 1, min(current_kernel + depth + 1, end_kernel)):
                     future_kernel_name = 'kernel-' + str(future_kernel)
                     for future_block in kernel_traces[future_kernel_name]["thread_blocks"]:
                         future_block_name = future_kernel_name + '_' + str(future_block)
@@ -311,7 +319,7 @@ def trace_dependencies(start, end, depth):
 
 
 
-def get_sim_stats(cuda_version, benchmark, test, sass, start, end, line_debug):
+def get_sim_stats(cuda_version, benchmark, test, sass, line_debug):
     """
     Gets addresses from the simulated stats file
     """
@@ -363,7 +371,7 @@ def get_sim_stats(cuda_version, benchmark, test, sass, start, end, line_debug):
             # Gather kernel info
             if "kernel id =" in line:
                 kernel_id = int(line.split(' ')[-1])
-                if (kernel_id < start) or ((end != float('inf')) and (kernel_id > int(end))):
+                if (kernel_id < start_kernel) or (kernel_id > end_kernel):
                     skipping_kernel = True
                     continue
                 else:
@@ -438,7 +446,7 @@ def get_sim_stats(cuda_version, benchmark, test, sass, start, end, line_debug):
 
 """""""""""""""
 
-  Gather Info
+  Getter Info
 
 """""""""""""""
 
@@ -497,36 +505,55 @@ def get_test(path, test_str):
 
 
 
-def graph_dependencies(start, end, tbd):
-    print('Creating trace dependency graph...', end = ' ')
+"""""""""""""""
+
+  Output Funcs
+
+"""""""""""""""
+
+def graph_dependencies(in_kernel='All', thread_block='All'):
     sys.stdout.flush()
-
-    # Add basic kernel names and threadblocks to graph
-    for kernel in range(start, end):
+    tbd_graph.attr(ranksep="3")
+    for kernel in range(start_kernel, end_kernel):
         kernel_name = 'kernel-' + str(kernel)
-        tbd.node(kernel_name, kernel_name)
-        for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
-            tbd.node(kernel_name + '_' + thread_block, thread_block)
-            tbd.edge(kernel_name, kernel_name + '_' + thread_block)
+        with tbd_graph.subgraph(name=("cluster" + str(kernel)), graph_attr={'label': '<<b>' + kernel_name + '</b>>'}) as current_kernel:
 
-    # Add kernel dependencies
-    for kernel in range(start, end):
-        kernel_name = 'kernel-' + str(kernel)
+            if in_kernel == 'All':
+                current_kernel.attr(margin="20", style="bold,rounded,filled", color="black", fillcolor="#f72116bb")
+                for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
+                    current_kernel.node(kernel_name + '_' + thread_block, thread_block, style="rounded,filled", color="black", fillcolor="white")
+
+            elif in_kernel == kernel:
+                current_kernel.attr(margin="20", style="bold,rounded,filled", color="black", fillcolor="#f72116bb", penwidth='3')
+                node_color = 'green' if thread_block != "All" else 'white'
+                node_width = '3' if thread_block != "All" else '2'
+                current_kernel.node(kernel_name + '_' + thread_block, thread_block, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+
+            else:
+                current_kernel.attr(margin="20", style="bold,rounded,filled", color="black", fillcolor="#f7211640")
+
         for block_depend in kernel_traces[kernel_name]["dependencies"]:
+            edge_color = '#00000006'
+            edge_weight = '1'
+            if in_kernel == 'All' or (kernel == in_kernel and thread_block == 'All'):
+                edge_color = '#000000ff'
+            elif block_depend == ('kernel-' + str(in_kernel) + '_' + thread_block):
+                edge_color = '#000000ff'
+                edge_weight = '3'
+
             for dependency in kernel_traces[kernel_name]["dependencies"][block_depend]:
-                tbd.edge(block_depend, dependency)
+                tbd_graph.edge(block_depend, dependency, color=edge_color, penwidth=edge_weight)
 
-    print('Done')
-    return tbd
+    create_graph_pdf()
+    return
 
 
 
-def create_graph_pdf(start, end, tbd_graph):
-    print('Creating kernel_dependencies.gv.pdf...', end = ' ')
+def create_graph_pdf():
+    print('Creating kernel trace dependency graph...', end = ' ')
     sys.stdout.flush()
     tbd_graph.render('kernel_dependencies.gv')
     print('Done')
-    return
 
 
 
@@ -557,17 +584,16 @@ def print_inst(kernel, pc):
     return
 
 
-def print_trace_stats(start, end, graph):
+def print_trace_stats(graph):
     print("\nDependency Stats\n===============")
     if graph:
-        tbd_graph = Digraph(comment='Kernel Trace Dependencies')
-        tbd_graph = graph_dependencies(start, end, tbd_graph)
-        create_graph_pdf(start, end, tbd_graph)
+        global tbd_graph
+        graph_dependencies()
 
     # TODO:
     # Find number of indendent thread blocks per kernel
     # Find most dependent kernel AND threadblock
-    for kernel in range(start, end):
+    for kernel in range(start_kernel, end_kernel):
         kernel_name = 'kernel-' + str(kernel)
         print("Dependent thread_blocks in " + kernel_name + ":", end = ' ')
         print(str(len(kernel_traces[kernel_name]["dependencies"])), end = '')
@@ -591,9 +617,9 @@ def print_dependencies():
     return
 
 
-def print_kernel_names(start, end):
+def print_kernel_names():
     print("\nKernel Names\n============")
-    for kernel in range(start, end):
+    for kernel in range(start_kernel, end_kernel):
         kernel_name = 'kernel-' + str(kernel)
         print(kernel_name + " - " + kernel_traces[kernel_name]["kernel_name"])
 
