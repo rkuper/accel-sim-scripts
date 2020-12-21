@@ -446,6 +446,55 @@ def get_sim_stats(cuda_version, benchmark, test, sass, line_debug):
 
 """""""""""""""
 
+  Output Funcs
+
+"""""""""""""""
+
+def graph_dependencies(in_kernel=[], in_thread_block=[]):
+    sys.stdout.flush()
+    tbd_graph.attr(ranksep="3")
+    for kernel in range(start_kernel, end_kernel):
+        kernel_name = 'kernel-' + str(kernel)
+
+        # Change kernels and internal nodes if necessary
+        with tbd_graph.subgraph(name=("cluster" + str(kernel)), graph_attr={'label': '<<b>' + kernel_name + '</b>>'}) as current_kernel:
+
+            # If on a requested kernel
+            fill_color = '#f72116bb' if (kernel in in_kernel or len(in_kernel) == 0) else '#f7211640'
+            current_kernel.attr(margin="20", style="bold,rounded,filled", color="black", fillcolor=fill_color, penwidth='3')
+
+            # Change thread block nodes requested
+            node_width = '1' if (kernel in in_kernel) else '3'
+            for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
+                node_color = 'green' if (((kernel in in_kernel) or (len(in_kernel) == 0)) and (thread_block in in_thread_block)) else 'white'
+                node_width = '2' if (((kernel in in_kernel) or (len(in_kernel) == 0)) and (thread_block in in_thread_block)) else '3'
+                current_kernel.node(kernel_name + '_' + thread_block, thread_block, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+
+        # Change oppacities of edges if necessary
+        for block_depend in kernel_traces[kernel_name]["dependencies"]:
+            thread_block = block_depend.split('_')[1]
+            edge_weight = '3' if ((len(in_thread_block) != 0) and (((kernel in in_kernel) or (len(in_kernel) == 0)) and (thread_block in in_thread_block))) else '1'
+            edge_color = '#00000006' if (((len(in_kernel) != 0) and (kernel not in in_kernel)) or ((len(in_thread_block) != 0) and (thread_block not in in_thread_block))) else '#000000ff'
+
+            # Redraw the edges or for the first time
+            for dependency in kernel_traces[kernel_name]["dependencies"][block_depend]:
+                tbd_graph.edge(block_depend, dependency, color=edge_color, penwidth=edge_weight)
+
+    create_graph_pdf()
+    return
+
+
+
+def create_graph_pdf():
+    print('Creating kernel trace dependency graph...', end = ' ')
+    sys.stdout.flush()
+    tbd_graph.render('kernel_dependencies.gv')
+    print('Done')
+
+
+
+"""""""""""""""
+
   Getter Info
 
 """""""""""""""
@@ -502,58 +551,6 @@ def get_test(path, test_str):
                 return (path + "/" + subdir)
 
     return best_match
-
-
-
-"""""""""""""""
-
-  Output Funcs
-
-"""""""""""""""
-
-def graph_dependencies(in_kernel='All', thread_block='All'):
-    sys.stdout.flush()
-    tbd_graph.attr(ranksep="3")
-    for kernel in range(start_kernel, end_kernel):
-        kernel_name = 'kernel-' + str(kernel)
-        with tbd_graph.subgraph(name=("cluster" + str(kernel)), graph_attr={'label': '<<b>' + kernel_name + '</b>>'}) as current_kernel:
-
-            if in_kernel == 'All':
-                current_kernel.attr(margin="20", style="bold,rounded,filled", color="black", fillcolor="#f72116bb")
-                for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
-                    current_kernel.node(kernel_name + '_' + thread_block, thread_block, style="rounded,filled", color="black", fillcolor="white")
-
-            elif in_kernel == kernel:
-                current_kernel.attr(margin="20", style="bold,rounded,filled", color="black", fillcolor="#f72116bb", penwidth='3')
-                node_color = 'green' if thread_block != "All" else 'white'
-                node_width = '3' if thread_block != "All" else '2'
-                current_kernel.node(kernel_name + '_' + thread_block, thread_block, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
-
-            else:
-                current_kernel.attr(margin="20", style="bold,rounded,filled", color="black", fillcolor="#f7211640")
-
-        for block_depend in kernel_traces[kernel_name]["dependencies"]:
-            edge_color = '#00000006'
-            edge_weight = '1'
-            if in_kernel == 'All' or (kernel == in_kernel and thread_block == 'All'):
-                edge_color = '#000000ff'
-            elif block_depend == ('kernel-' + str(in_kernel) + '_' + thread_block):
-                edge_color = '#000000ff'
-                edge_weight = '3'
-
-            for dependency in kernel_traces[kernel_name]["dependencies"][block_depend]:
-                tbd_graph.edge(block_depend, dependency, color=edge_color, penwidth=edge_weight)
-
-    create_graph_pdf()
-    return
-
-
-
-def create_graph_pdf():
-    print('Creating kernel trace dependency graph...', end = ' ')
-    sys.stdout.flush()
-    tbd_graph.render('kernel_dependencies.gv')
-    print('Done')
 
 
 
