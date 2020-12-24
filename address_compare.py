@@ -94,7 +94,7 @@ def arg_wrapper():
     print("\n*** NOTE: Add third arguement 'view' in graph_dependencie to show:")
     print("\t'all': everything")
     print("\t'kernel': kernels and the kernels they depend on (no shown thread_block)")
-    print("\t'thread-block': kernels and the selected thread blocks, along with the kernels and thread blocks that depend on them")
+    print("\t'thread-block': kernels and the selected thread blocks, along with the kernels and thread blocks that depend on them\n")
 
     return
 
@@ -479,7 +479,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
                 thread_block = block_depend.split('_')[1]
 
                 # If looking only at specific thread blocks, ignore the irrelevant information
-                if (view == 'thread_block') and (thread_block not in thread_blocks):
+                if (view == 'thread_block') and ((thread_block not in thread_blocks) and (len(thread_blocks) != 0)):
                     continue
 
                 if block_depend not in needed_info[kernel_name]["dependencies"]:
@@ -508,10 +508,10 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
     # Begin creating the graph
     tbd_graph.clear()
     sys.stdout.flush()
-    tbd_graph.attr(ranksep="3")
 
     # For 'thread_block' or 'all' mode
     if view != 'kernel':
+        tbd_graph.attr(ranksep="3")
         for kernel_name in needed_info:
             kernel = int(kernel_name.split('-')[1])
             kernel_match = (kernel in kernels) or (len(kernels) == 0)
@@ -522,8 +522,10 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
                 # If on a requested kernel
                 fill_color = '#f72116bb' if (kernel in kernels or len(kernels) == 0) else '#f7211640'
                 kernel_width = '5' if (kernel in kernels) else '3'
+                short_kernel_name = kernel_traces[kernel_name]["kernel_name"].split('_')
+                short_kernel_name = short_kernel_name[0] + short_kernel_name[1] + '-' + short_kernel_name[2]
                 kernel_label = '<<br/><font point-size="20"><b>' + kernel_name + '</b></font>'
-                kernel_label += '<br/><font point-size="14">' + kernel_traces[kernel_name]["kernel_name"] + '</font>>'
+                kernel_label += '<br/><font point-size="14">' + short_kernel_name + '</font>>'
                 current_kernel.attr(margin="20", style="rounded,filled", color="black", fillcolor=fill_color, penwidth=kernel_width, label=kernel_label, pad="2")
 
                 # Add/Change thread block nodes
@@ -557,15 +559,24 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
 
     # For 'kernel' mode
     else:
+        tbd_graph.attr(ranksep="1")
         for kernel_name in needed_info:
+            kernel = int(kernel_name.split('-')[1])
             kernel_match = (kernel in kernels) or (len(kernels) == 0)
+            short_kernel_name = kernel_traces[kernel_name]["kernel_name"].split('_')
+            short_kernel_name = short_kernel_name[0] + short_kernel_name[1] + '-' + short_kernel_name[2]
+            kernel_label = '<<br/><font point-size="20"><b>' + kernel_name + '</b></font>'
+            kernel_label += '<br/><font point-size="14">' + short_kernel_name + '<br/></font>>'
             node_color = '#f72116bb' if (kernel_match) else '#f7211640'
             node_width = '3' if (kernel_match) else '2'
-            tbd_graph.node(kernel_name, kernel_name, style="bold,rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+            tbd_graph.node(kernel_name, kernel_label, shape="box", style="bold,rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
         for kernel_name in needed_info:
+            kernel = int(kernel_name.split('-')[1])
+            kernel_match = (kernel in kernels) or (len(kernels) == 0)
             edge_weight = '3' if (kernel_match) else '1'
             edge_color = '#000000ff' if (kernel_match) else '#00000006'
             for kernel_dependency in needed_info[kernel_name]["kernels"]:
+                print(kernel_dependency)
                 tbd_graph.edge(kernel_name, kernel_dependency, color=edge_color, penwidth=edge_weight)
 
     create_graph_pdf()
