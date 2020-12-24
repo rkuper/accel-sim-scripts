@@ -69,7 +69,7 @@ def arg_wrapper():
     # Get global values for starting and ending kernel traces
     global start_kernel, end_kernel
     start_kernel = int(args.start)
-    end_kernel = float('inf') if args.end == float('inf') else int(args.end)
+    end_kernel = float('inf') if (args.end == float('inf')) else int(args.end)
 
     # Manage kernel traces
     get_traces(device_number, cuda_version, args.benchmark, args.test, args.line_debug, depth)
@@ -85,8 +85,16 @@ def arg_wrapper():
 
     # Output to .json file
     if args.json:
+        print("Writing file 'kernel_traces.json...'", end = ' ')
         with open('kernel_traces.json','w') as fp:
             json.dump(kernel_traces, fp)
+        print("Done")
+
+    # Note for info
+    print("\n*** NOTE: Add third arguement 'view' in graph_dependencie to show:")
+    print("\t'all': everything")
+    print("\t'kernel': kernels and the kernels they depend on (no shown thread_block)")
+    print("\t'thread-block': kernels and the selected thread blocks, along with the kernels and thread blocks that depend on them")
 
     return
 
@@ -450,35 +458,115 @@ def get_sim_stats(cuda_version, benchmark, test, sass, line_debug):
 
 """""""""""""""
 
-def graph_dependencies(in_kernel=[], in_thread_block=[]):
-    sys.stdout.flush()
-    tbd_graph.attr(ranksep="3")
+def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
+
+
+    # Grab all needed info from the dependency section of stats/traces
+    needed_info = {}
     for kernel in range(start_kernel, end_kernel):
         kernel_name = 'kernel-' + str(kernel)
+        kernel_match = (kernel in kernels) or (len(kernels) == 0)
 
-        # Change kernels and internal nodes if necessary
-        with tbd_graph.subgraph(name=("cluster" + str(kernel)), graph_attr={'label': '<<b>' + kernel_name + '</b>>'}) as current_kernel:
+        if kernel_match:
+            if kernel_name not in needed_info:
+                needed_info[kernel_name] = {}
+                needed_info[kernel_name]["dependencies"] = {}
+                needed_info[kernel_name]["thread_blocks"] = []
+                needed_info[kernel_name]["kernels"] = []
 
-            # If on a requested kernel
-            fill_color = '#f72116bb' if (kernel in in_kernel or len(in_kernel) == 0) else '#f7211640'
-            current_kernel.attr(margin="20", style="bold,rounded,filled", color="black", fillcolor=fill_color, penwidth='3')
+            # Add all dependent blocks to kernel info
+            for block_depend in kernel_traces[kernel_name]["dependencies"]:
+                thread_block = block_depend.split('_')[1]
 
-            # Change thread block nodes requested
-            node_width = '1' if (kernel in in_kernel) else '3'
-            for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
-                node_color = 'green' if (((kernel in in_kernel) or (len(in_kernel) == 0)) and (thread_block in in_thread_block)) else 'white'
-                node_width = '2' if (((kernel in in_kernel) or (len(in_kernel) == 0)) and (thread_block in in_thread_block)) else '3'
-                current_kernel.node(kernel_name + '_' + thread_block, thread_block, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+                # If looking only at specific thread blocks, ignore the irrelevant information
+                if (view == 'thread_block') and (thread_block not in thread_blocks):
+                    continue
 
-        # Change oppacities of edges if necessary
-        for block_depend in kernel_traces[kernel_name]["dependencies"]:
-            thread_block = block_depend.split('_')[1]
-            edge_weight = '3' if ((len(in_thread_block) != 0) and (((kernel in in_kernel) or (len(in_kernel) == 0)) and (thread_block in in_thread_block))) else '1'
-            edge_color = '#00000006' if (((len(in_kernel) != 0) and (kernel not in in_kernel)) or ((len(in_thread_block) != 0) and (thread_block not in in_thread_block))) else '#000000ff'
+                if block_depend not in needed_info[kernel_name]["dependencies"]:
+                    needed_info[kernel_name]["dependencies"][block_depend] = []
 
-            # Redraw the edges or for the first time
-            for dependency in kernel_traces[kernel_name]["dependencies"][block_depend]:
-                tbd_graph.edge(block_depend, dependency, color=edge_color, penwidth=edge_weight)
+                # Add all other kernel block dependencies to their kernel info
+                for dependency in kernel_traces[kernel_name]["dependencies"][block_depend]:
+                    kernel_dependency = dependency.split('_')[0]
+                    thread_block_dependency = dependency.split('_')[1]
+
+                    # Add all thread block dependencies for easy access
+                    needed_info[kernel_name]["dependencies"][block_depend].append(dependency)
+
+                    # In order: add kernel to the current kernel dependency list, then add the new other kernel info to the structure
+                    if kernel_dependency not in needed_info[kernel_name]["kernels"]:
+                        needed_info[kernel_name]["kernels"].append(kernel_dependency)
+                    if kernel_dependency not in needed_info:
+                        needed_info[kernel_dependency] = {}
+                        needed_info[kernel_dependency]["dependencies"] = {}
+                        needed_info[kernel_dependency]["thread_blocks"] = []
+                        needed_info[kernel_dependency]["kernels"] = []
+                    if thread_block_dependency not in needed_info[kernel_dependency]["thread_blocks"]:
+                        needed_info[kernel_dependency]["thread_blocks"].append(thread_block_dependency)
+
+
+    # Begin creating the graph
+    tbd_graph.clear()
+    sys.stdout.flush()
+    tbd_graph.attr(ranksep="3")
+
+    # For 'thread_block' or 'all' mode
+    if view != 'kernel':
+        for kernel_name in needed_info:
+            kernel = int(kernel_name.split('-')[1])
+            kernel_match = (kernel in kernels) or (len(kernels) == 0)
+
+            # Add/Change kernels and internal nodes
+            with tbd_graph.subgraph(name=("cluster" + str(kernel))) as current_kernel:
+
+                # If on a requested kernel
+                fill_color = '#f72116bb' if (kernel in kernels or len(kernels) == 0) else '#f7211640'
+                kernel_width = '5' if (kernel in kernels) else '3'
+                kernel_label = '<<br/><font point-size="20"><b>' + kernel_name + '</b></font>'
+                kernel_label += '<br/><font point-size="14">' + kernel_traces[kernel_name]["kernel_name"] + '</font>>'
+                current_kernel.attr(margin="20", style="rounded,filled", color="black", fillcolor=fill_color, penwidth=kernel_width, label=kernel_label, pad="2")
+
+                # Add/Change thread block nodes
+                for block_depend in needed_info[kernel_name]["dependencies"]:
+                    thread_block = block_depend.split('_')[1]
+                    thread_block_match = thread_block in thread_blocks
+                    node_color = 'gray' if (kernel_match and thread_block_match) else 'white'
+                    node_width = '2' if (kernel_match and thread_block_match) else '3'
+                    thread_block_id = kernel_name + '_' + thread_block
+                    current_kernel.node(thread_block_id, thread_block, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+
+                if (len(needed_info[kernel_name]["dependencies"]) == 0) or (view == 'thread_block'):
+                    for thread_block in needed_info[kernel_name]["thread_blocks"]:
+                        thread_block_match = thread_block in thread_blocks
+                        node_color = 'gray' if (kernel_match and thread_block_match) else 'white'
+                        node_width = '2' if (kernel_match and thread_block_match) else '3'
+                        thread_block_id = kernel_name + '_' + thread_block
+                        current_kernel.node(thread_block_id, thread_block, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+
+            # Change oppacities of edges if necessary
+            for block_depend in needed_info[kernel_name]["dependencies"]:
+                thread_block = block_depend.split('_')[1]
+                thread_block_match = thread_block in thread_blocks
+
+                edge_weight = '3' if (kernel_match and thread_block_match) else '1'
+                edge_color = '#000000ff' if ((len(thread_blocks) == 0) or (kernel_match and thread_block_match)) else '#00000006'
+
+                # Draw/Redraw the edges or for the first time
+                for dependency in needed_info[kernel_name]["dependencies"][block_depend]:
+                    tbd_graph.edge(block_depend, dependency, color=edge_color, penwidth=edge_weight)
+
+    # For 'kernel' mode
+    else:
+        for kernel_name in needed_info:
+            kernel_match = (kernel in kernels) or (len(kernels) == 0)
+            node_color = '#f72116bb' if (kernel_match) else '#f7211640'
+            node_width = '3' if (kernel_match) else '2'
+            tbd_graph.node(kernel_name, kernel_name, style="bold,rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+        for kernel_name in needed_info:
+            edge_weight = '3' if (kernel_match) else '1'
+            edge_color = '#000000ff' if (kernel_match) else '#00000006'
+            for kernel_dependency in needed_info[kernel_name]["kernels"]:
+                tbd_graph.edge(kernel_name, kernel_dependency, color=edge_color, penwidth=edge_weight)
 
     create_graph_pdf()
     return
@@ -490,6 +578,7 @@ def create_graph_pdf():
     sys.stdout.flush()
     tbd_graph.render('kernel_dependencies.gv')
     print('Done')
+    return
 
 
 
