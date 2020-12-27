@@ -46,6 +46,7 @@ def arg_wrapper():
     parser.add_argument("-e", "--end", help = "Which kernel to end parsing on", default=float('inf'))
     parser.add_argument("-d", "--depth", help = "Data contains line the data was obtained from", default=1)
     parser.add_argument("-l", "--line_debug", help = "Data contains line the data was obtained from", action='store_true')
+    parser.add_argument("-o", "--open", help = "Open and use json data given in json file named: kernel_traces.json", action='store_true')
     parser.add_argument("-j", "--json", help = "Output kernel_traces to json file (kernel_traces.json)", action='store_true')
     parser.add_argument("-g", "--graph", help = "Output a graph of all kernel dependencies found", action='store_true')
     args = parser.parse_args()
@@ -80,19 +81,32 @@ def arg_wrapper():
     start_kernel = int(args.start)
     end_kernel = float('inf') if (args.end == float('inf')) else int(args.end)
 
-    # Manage kernel traces
-    get_traces(device_number, cuda_version, args.benchmark, args.test, args.line_debug, depth)
+    # If data exists and want to use, skip getting it again
+    if args.open and os.path.isfile('kernel_traces.json'):
+        print("\nGetting Kernel Traces\n=====================")
+        global kernel_traces
+        print("Gathering kernel_traces.json data...", end = ' ')
+        kernel_traces = json.load(open('kernel_traces.json', 'r'))
+        print("Done")
+        kernels = sorted(kernel_traces.keys())
+        start_kernel = int(kernels[0].split('-')[1])
+        end_kernel = int(kernels[-1].split('-')[1])
+        print("Using kernels " + str(start_kernel) + "-" + str(end_kernel))
 
-    # Grab kernel trace dependencies
-    print('Grabbing dependencies...', end = ' ')
-    sys.stdout.flush()
-    pool = mp.Pool(mp.cpu_count())
-    specific_dependencies = partial(trace_dependencies, depth=depth)
-    all_kernel_dependencies = pool.map(specific_dependencies, kernel_traces.keys())
-    for kernel_dependencies in all_kernel_dependencies:
-        kernel_name = list(kernel_dependencies.keys())[0]
-        kernel_traces[kernel_name]["dependencies"] = kernel_dependencies[kernel_name]
-    print('Done')
+    else:
+        # Manage kernel traces
+        get_traces(device_number, cuda_version, args.benchmark, args.test, args.line_debug, depth)
+
+        # Grab kernel trace dependencies
+        print('Grabbing dependencies...', end = ' ')
+        sys.stdout.flush()
+        pool = mp.Pool(mp.cpu_count())
+        specific_dependencies = partial(trace_dependencies, depth=depth)
+        all_kernel_dependencies = pool.map(specific_dependencies, kernel_traces.keys())
+        for kernel_dependencies in all_kernel_dependencies:
+            kernel_name = list(kernel_dependencies.keys())[0]
+            kernel_traces[kernel_name]["dependencies"] = kernel_dependencies[kernel_name]
+        print('Done')
 
     # Manage sim output
     get_sim_stats(cuda_version, args.benchmark, args.test, sass, args.line_debug)
