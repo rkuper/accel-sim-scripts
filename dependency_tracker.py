@@ -1,10 +1,11 @@
 """""""""""""""""""""""""""""""""""""""""""""""""""
-Address Checker Script
+Dependency Tracker Script
 ===================================================
-Filename: address_compare.py
+Filename: dependency_tracker.py
 Author: Reese Kuper
 Purpose: Compare address between kernel traces and
-the simulated addresses
+the simulated addresses to find and graph kernel
+and thread block dependencies
 """""""""""""""""""""""""""""""""""""""""""""""""""
 
 import os
