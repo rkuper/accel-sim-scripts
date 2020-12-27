@@ -9,13 +9,15 @@ the simulated addresses
 
 import os
 import sys
+import time
+import multiprocessing as mp
+from functools import partial
 import argparse
 import re
 from subprocess import Popen, PIPE
 import glob
 import pprint
 import json
-import graphviz as gv
 from graphviz import Digraph
 
 """""""""
@@ -27,6 +29,13 @@ start_kernel = 0
 end_kernel = float('inf')
 tbd_graph = Digraph(comment='Kernel Trace Dependencies', strict=True)
 
+
+
+"""""""""""""""""""""
+
+    Main Functions
+
+"""""""""""""""""""""
 
 def arg_wrapper():
     parser = argparse.ArgumentParser()
@@ -48,9 +57,9 @@ def arg_wrapper():
     cut_space = Popen(['cut', '-d', ' ', '-f', '1'], stdin = cut_col.stdout, stdout = PIPE)
     cut_dec = Popen(['cut', '-d', '.', '-f', '1'], stdin = cut_col.stdout, stdout = PIPE)
     device_number = cut_dec.communicate()[0].decode('ascii').rstrip()
-    device_number = 0 if device_number == '' else int(device_number)
 
     # FIXME Set to 0 for debugging, NOT for normal use :/
+    # device_number = 0 if device_number == '' else int(device_number)
     device_number = 0
 
     # Get the cuda version for pathing
@@ -74,6 +83,17 @@ def arg_wrapper():
     # Manage kernel traces
     get_traces(device_number, cuda_version, args.benchmark, args.test, args.line_debug, depth)
 
+    # Grab kernel trace dependencies
+    print('Grabbing dependencies...', end = ' ')
+    sys.stdout.flush()
+    pool = mp.Pool(mp.cpu_count())
+    specific_dependencies = partial(trace_dependencies, depth=depth)
+    all_kernel_dependencies = pool.map(specific_dependencies, kernel_traces.keys())
+    for kernel_dependencies in all_kernel_dependencies:
+        kernel_name = list(kernel_dependencies.keys())[0]
+        kernel_traces[kernel_name]["dependencies"] = kernel_dependencies[kernel_name]
+    print('Done')
+
     # Manage sim output
     get_sim_stats(cuda_version, args.benchmark, args.test, sass, args.line_debug)
 
@@ -91,7 +111,7 @@ def arg_wrapper():
         print("Done")
 
     # Note for info
-    print("\n*** NOTE: Add third arguement 'view' in graph_dependencie to show:")
+    print("\n*** NOTE: Add third arguement 'view' in graph_dependencies(kernels=[], thread_blocks=[], view=...) to show:")
     print("\t'all': everything")
     print("\t'kernel': kernels and the kernels they depend on (no shown thread_block)")
     print("\t'thread-block': kernels and the selected thread blocks, along with the kernels and thread blocks that depend on them\n")
@@ -270,60 +290,54 @@ def get_traces(device_number, cuda_version, benchmark, test, line_debug, depth):
                         kernel_traces[kernel_name]["num_mem_insts"] += 1
 
                 print('Done')
-        trace_dependencies(depth)
     return
 
 
 
-def trace_dependencies(depth):
-    dependencies = {}
-
+# def trace_dependencies(depth, kernel_name, dependencies):
+def trace_dependencies(kernel_name, depth):
     if start_kernel == (end_kernel - 1):
         return
 
-    print('Grabbing dependencies...', end = ' ')
-    sys.stdout.flush()
+    dependencies = {}
+    dependencies[kernel_name] = {}
+    kernel = int(kernel_name.split('-')[1])
+    for current_block in kernel_traces[kernel_name]["thread_blocks"]:
 
-    # Per threadblock within each kernel, check for warps that contain similar addresses
-    for current_kernel in range(start_kernel, end_kernel):
-        current_kernel_name = 'kernel-' + str(current_kernel)
-        for current_block in kernel_traces[current_kernel_name]["thread_blocks"]:
+        # Set up the current block dependency list
+        current_block_name = kernel_name + '_' + str(current_block)
+        dependencies[kernel_name][current_block_name] = []
 
-            # Set up the current block dependency list
-            current_block_name = current_kernel_name + '_' + str(current_block)
-            kernel_traces[current_kernel_name]["dependencies"][current_block_name] = []
+        for current_address in kernel_traces[kernel_name]["thread_blocks"][current_block]["mem_addrs"]:
 
-            for current_address in kernel_traces[current_kernel_name]["thread_blocks"][current_block]["mem_addrs"]:
+            # Covers all subsequent kernels - takes FOREVER
+            for future_kernel in range(kernel + 1, min(kernel + depth + 1, end_kernel)):
+                future_kernel_name = 'kernel-' + str(future_kernel)
+                for future_block in kernel_traces[future_kernel_name]["thread_blocks"]:
+                    future_block_name = future_kernel_name + '_' + str(future_block)
 
-                # Covers all subsequent kernels - takes FOREVER
-                for future_kernel in range(current_kernel + 1, min(current_kernel + depth + 1, end_kernel)):
-                    future_kernel_name = 'kernel-' + str(future_kernel)
-                    for future_block in kernel_traces[future_kernel_name]["thread_blocks"]:
-                        future_block_name = future_kernel_name + '_' + str(future_block)
+                    if future_block_name == current_block_name:
+                        continue
 
-                        if future_block_name == current_block_name:
-                            continue
+                    for future_address in kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"]:
+                        # If already dependent, exit the block
+                        if future_block_name in dependencies[kernel_name][current_block_name]:
+                            break;
 
-                        for future_address in kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"]:
-                            # If already dependent, exit the block
-                            if future_block_name in kernel_traces[current_kernel_name]["dependencies"][current_block_name]:
-                                break;
+                        # Determine if address is too similar (assume block size of a byte?)
+                        cur_addr_check = int(current_address, 16) & 0xFFFFFFB0
+                        fut_addr_check = int(future_address, 16) & 0xFFFFFFB0
+                        if cur_addr_check == fut_addr_check:
+                            dependencies[kernel_name][current_block_name].append(future_block_name)
+                            break
 
-                            # Determine if address is too similar (assume block size of a byte?)
-                            cur_addr_check = int(current_address, 16) & 0xFFFFFFB0
-                            fut_addr_check = int(future_address, 16) & 0xFFFFFFB0
-                            if cur_addr_check == fut_addr_check:
-                                kernel_traces[current_kernel_name]["dependencies"][current_block_name].append(future_block_name)
-                                break
+        # Remove independent blocks
+        if len(dependencies[kernel_name][current_block_name]) == 0:
+            del dependencies[kernel_name][current_block_name]
+        else:
+                dependencies[kernel_name][current_block_name] = sorted(dependencies[kernel_name][current_block_name])
 
-            # Remove independent blocks
-            if len(kernel_traces[current_kernel_name]["dependencies"][current_block_name]) == 0:
-                del kernel_traces[current_kernel_name]["dependencies"][current_block_name]
-            else:
-                kernel_traces[current_kernel_name]["dependencies"][current_block_name] = sorted(kernel_traces[current_kernel_name]["dependencies"][current_block_name])
-
-    print('Done')
-    return
+    return dependencies
 
 
 
@@ -732,4 +746,6 @@ def print_trace():
 
 
 if __name__=="__main__":
+    begin = time.time()
     arg_wrapper()
+    print("Runtime: " + str((time.time() - begin)) + "s\n")
