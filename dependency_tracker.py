@@ -339,8 +339,6 @@ def trace_dependencies(kernel_name, depth):
         # Remove independent blocks
         if len(dependencies[kernel_name][current_block_name]) == 0:
             del dependencies[kernel_name][current_block_name]
-        else:
-            dependencies[kernel_name][current_block_name] = sorted(dependencies[kernel_name][current_block_name])
 
     return dependencies
 
@@ -553,16 +551,18 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
                     thread_block_match = thread_block in thread_blocks
                     node_color = 'gray' if (kernel_match and thread_block_match) else 'white'
                     node_width = '2' if (kernel_match and thread_block_match) else '3'
+                    thread_block_label = ('<<b>' + thread_block + '</b>>') if (kernel_match and thread_block_match) else thread_block
                     thread_block_id = kernel_name + '_' + thread_block
-                    current_kernel.node(thread_block_id, thread_block, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+                    current_kernel.node(thread_block_id, thread_block_label, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
 
                 if (len(needed_info[kernel_name]["dependencies"]) == 0) or (view == 'thread_block'):
                     for thread_block in needed_info[kernel_name]["thread_blocks"]:
                         thread_block_match = thread_block in thread_blocks
                         node_color = 'gray' if (kernel_match and thread_block_match) else 'white'
                         node_width = '2' if (kernel_match and thread_block_match) else '3'
+                        thread_block_label = ('<<b>' + thread_block + '</b>>') if (kernel_match and thread_block_match) else thread_block
                         thread_block_id = kernel_name + '_' + thread_block
-                        current_kernel.node(thread_block_id, thread_block, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
+                        current_kernel.node(thread_block_id, thread_block_label, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
 
             # Change oppacities of edges if necessary
             for block_depend in needed_info[kernel_name]["dependencies"]:
