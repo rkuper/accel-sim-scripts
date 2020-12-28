@@ -70,10 +70,6 @@ def arg_wrapper():
     # Get the SASS ISA
     sass = 'QV100' if (args.sass == None) else args.sass
 
-    # Make sure the kernel values are normal
-    if (args.end != float('inf')) and (int(args.end) < int(args.start)):
-        print("End kernel should not be earlier than the starting kernel")
-
     # Make sure depth is not bad
     depth = 1 if int(args.depth) < 1 else int(args.depth)
 
@@ -82,9 +78,16 @@ def arg_wrapper():
     start_kernel = int(args.start)
     end_kernel = float('inf') if (args.end == float('inf')) else int(args.end)
 
+    # Make sure the kernel values are normal
+    if (args.end != float('inf')) and (int(args.end) < int(args.start)):
+        print("End kernel should not be earlier than the starting kernel\n")
+        end_kernel = float('inf')
+
     # If data exists and want to use, skip getting it again
     if args.open and os.path.isfile('kernel_traces.json'):
-        print("\nGetting Kernel Traces\n=====================")
+        kernel_trace_title = "=   Getting Kernel Traces   ="
+        kernel_trace_title = ("=" * len(kernel_trace_title)) + "\n"  + kernel_trace_title + "\n" + ("=" * len(kernel_trace_title))
+        print(kernel_trace_title)
         global kernel_traces
         print("Gathering kernel_traces.json data...", end = ' ')
         kernel_traces = json.load(open('kernel_traces.json', 'r'))
@@ -162,7 +165,10 @@ def get_traces(device_number, cuda_version, benchmark, test, line_debug, depth):
     if test_dir == None:
         print("Could not find specific test in accel-sim-framework/hw_run/traces/device-#/<CUDA>/<BENCHMARK>/<TEST>")
         return
-    print("\nParsing Kernel Traces\n=====================")
+
+    parse_trace_title = "=   Parsing Kernel Traces   ="
+    parse_trace_title = "\n" + ("=" * len(parse_trace_title)) + "\n"  + parse_trace_title + "\n" + ("=" * len(parse_trace_title))
+    print(parse_trace_title)
     print("Using test: " + test_dir[test_dir.rfind('/') + 1:])
 
     traces_dir = test_dir + "/traces"
@@ -345,10 +351,6 @@ def trace_dependencies(kernel_name, depth):
 
 
 def get_sim_stats(cuda_version, benchmark, test, sass, line_debug):
-    """
-    Gets addresses from the simulated stats file
-    """
-
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
@@ -370,7 +372,9 @@ def get_sim_stats(cuda_version, benchmark, test, sass, line_debug):
     if test_dir == None:
         print("Could not find specific test in accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>")
         return
-    print("\nParsing Simulation Output\n=========================")
+    parse_sim_title = "=   Parsing Simulation Output   ="
+    parse_sim_title = "\n" + ("=" * len(parse_sim_title)) + "\n"  + parse_sim_title + "\n" + ("=" * len(parse_sim_title))
+    print(parse_sim_title)
     print("Using test: " + test_dir[test_dir.rfind('/') + 1:])
 
     sass_dir = test_dir + "/" + sass + "-SASS"
@@ -681,8 +685,9 @@ def print_inst(kernel, pc):
     kernel_name = "kernel-" + str(kernel)
     inst_name = kernel_name + "_" + str(hex(pc))
 
-    print("\nKernel Trace for: " + inst_name)
-    print("==================================")
+    kernel_inst_title = "=   Kernel Trace for:" + inst_name + "   ="
+    kernel_inst_title = "\n" + ("=" * len(kernel_inst_title)) + "\n" + kernel_inst_title + "\n" + ("=" * len(kernel_inst_title))
+    print(kernel_inst_title)
     for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
         for warp in kernel_traces[kernel_name]["thread_blocks"][thread_block]["warps"]:
             for mem_inst in kernel_traces[kernel_name]["thread_blocks"][thread_block]["warps"][warp]["mem_insts"]:
@@ -690,8 +695,9 @@ def print_inst(kernel, pc):
                     print(str(warp) + " ", end = '')
                     pprint.pprint(kernel_traces[kernel_name]["thread_blocks"][thread_block]["warps"][warp]["mem_insts"][mem_inst])
 
-    print("\nSimulation Output for: " + inst_name)
-    print("=======================================")
+    sim_inst_title = "=   Simulation Output for:" + inst_name + "   ="
+    sim_inst_title = "\n" + ("=" * len(sim_inst_title)) + "\n"  + sim_inst_title + "\n" + ("=" * len(sim_inst_title))
+    print(sim_inst_title)
     for mem_inst in sim_stats[kernel_name]["mem_insts"]:
         if mem_inst == inst_name:
             pprint.pprint(sim_stats[kernel_name]["mem_insts"][mem_inst])
@@ -699,7 +705,9 @@ def print_inst(kernel, pc):
 
 
 def print_trace_stats(graph):
-    print("\nDependency Stats\n===============")
+    dependency_stats_title = "=   Dependency Stats   ="
+    dependency_stats_title = "\n" + ("=" * len(dependency_stats_title)) + "\n"  + dependency_stats_title + "\n" + ("=" * len(dependency_stats_title))
+    print(dependency_stats_title)
     if graph:
         global tbd_graph
         graph_dependencies()
@@ -732,7 +740,9 @@ def print_dependencies():
 
 
 def print_kernel_names():
-    print("\nKernel Names\n============")
+    kernel_names_title = "=   Kernel Names   ="
+    kernel_names_title = "\n" + ("=" * len(kernel_names_title)) + "\n"  + kernel_names_title + "\n" + ("=" * len(kernel_names_title))
+    print(kernel_names_title)
     for kernel in range(start_kernel, end_kernel):
         kernel_name = 'kernel-' + str(kernel)
         print(kernel_name + " - " + kernel_traces[kernel_name]["kernel_name"])
