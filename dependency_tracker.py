@@ -325,6 +325,7 @@ def trace_dependencies(kernel_name, depth):
 
         for current_address in kernel_traces[kernel_name]["thread_blocks"][current_block]["mem_addrs"]:
 
+            cur_addr_check = int(current_address, 16) & 0xFFFFFFB0
             # Covers all subsequent kernels - takes FOREVER
             for future_kernel in range(kernel + 1, min(kernel + depth + 1, end_kernel)):
                 future_kernel_name = 'kernel-' + str(future_kernel)
@@ -334,23 +335,14 @@ def trace_dependencies(kernel_name, depth):
                     if future_block_name == current_block_name:
                         continue
 
-                    for future_address in kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"]:
-                        # If already dependent, exit the block
-                        if future_block_name in dependencies[kernel_name][current_block_name]:
-                            break;
-
-                        # Determine if address is too similar (assume block size of a byte?)
-                        cur_addr_check = int(current_address, 16) & 0xFFFFFFB0
-                        fut_addr_check = int(future_address, 16) & 0xFFFFFFB0
-                        if cur_addr_check == fut_addr_check:
-                            dependencies[kernel_name][current_block_name].append(future_block_name)
-                            break
+                    if cur_addr_check in list(map(lambda x: (int(x, 16) & 0xFFFFFFB0), kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"])):
+                        dependencies[kernel_name][current_block_name].append(future_block_name)
 
         # Remove independent blocks
         if len(dependencies[kernel_name][current_block_name]) == 0:
             del dependencies[kernel_name][current_block_name]
         else:
-                dependencies[kernel_name][current_block_name] = sorted(dependencies[kernel_name][current_block_name])
+            dependencies[kernel_name][current_block_name] = sorted(dependencies[kernel_name][current_block_name])
 
     return dependencies
 
