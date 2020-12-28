@@ -477,7 +477,6 @@ def get_sim_stats(cuda_version, benchmark, test, sass, line_debug):
 
 def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
 
-
     # Grab all needed info from the dependency section of stats/traces
     needed_info = {}
     for kernel in range(start_kernel, end_kernel):
