@@ -605,7 +605,6 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
             edge_weight = '3' if (kernel_match) else '1'
             edge_color = '#000000ff' if (kernel_match) else '#00000006'
             for kernel_dependency in needed_info[kernel_name]["kernels"]:
-                print(kernel_dependency)
                 tbd_graph.edge(kernel_name, kernel_dependency, color=edge_color, penwidth=edge_weight)
 
     create_graph_pdf()
