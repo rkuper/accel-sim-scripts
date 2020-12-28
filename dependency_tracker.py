@@ -332,9 +332,7 @@ def trace_dependencies(kernel_name, depth):
                 for future_block in kernel_traces[future_kernel_name]["thread_blocks"]:
                     future_block_name = future_kernel_name + '_' + str(future_block)
 
-                    if future_block_name == current_block_name:
-                        continue
-
+                    # If the current address matches any address in the future thread block, add it
                     if cur_addr_check in list(map(lambda x: (int(x, 16) & 0xFFFFFFB0), kernel_traces[future_kernel_name]["thread_blocks"][future_block]["mem_addrs"])):
                         dependencies[kernel_name][current_block_name].append(future_block_name)
 
