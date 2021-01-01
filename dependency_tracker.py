@@ -553,7 +553,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
                     thread_block = block_depend.split('_')[1]
                     thread_block_match = thread_block in thread_blocks
                     node_color = 'gray' if (kernel_match and thread_block_match) else 'white'
-                    node_width = '2' if (kernel_match and thread_block_match) else '3'
+                    node_width = '3' if (kernel_match and thread_block_match) else '2'
                     thread_block_label = ('<<b>' + thread_block + '</b>>') if (kernel_match and thread_block_match) else thread_block
                     thread_block_id = kernel_name + '_' + thread_block
                     current_kernel.node(thread_block_id, thread_block_label, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
@@ -562,7 +562,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
                     for thread_block in needed_info[kernel_name]["thread_blocks"]:
                         thread_block_match = thread_block in thread_blocks
                         node_color = 'gray' if (kernel_match and thread_block_match) else 'white'
-                        node_width = '2' if (kernel_match and thread_block_match) else '3'
+                        node_width = '3' if (kernel_match and thread_block_match) else '2'
                         thread_block_label = ('<<b>' + thread_block + '</b>>') if (kernel_match and thread_block_match) else thread_block
                         thread_block_id = kernel_name + '_' + thread_block
                         current_kernel.node(thread_block_id, thread_block_label, style="rounded,filled", color="black", fillcolor=node_color, penwidth=node_width)
