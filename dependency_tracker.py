@@ -114,7 +114,7 @@ def arg_wrapper():
 
     else:
         # Manage kernel traces
-        get_traces(device_number, cuda_version, args.benchmark, \
+        parse_trace_files(device_number, cuda_version, args.benchmark, \
                 args.test, args.line_debug, depth)
 
         # Grab kernel trace dependencies
@@ -131,7 +131,7 @@ def arg_wrapper():
         print('Done')
 
     # Manage sim output
-    get_sim_stats(cuda_version, args.benchmark, args.test, sass, args.line_debug)
+    parse_sim_output(cuda_version, args.benchmark, args.test, sass, args.line_debug)
 
     # Manage trace stats
     print_trace_stats(args.graph)
@@ -158,7 +158,7 @@ def arg_wrapper():
 
 
 
-def get_traces(device_number, cuda_version, benchmark, test, line_debug, depth):
+def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug, depth):
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
@@ -415,7 +415,7 @@ def trace_dependencies(kernel_name, depth):
 
 
 
-def get_sim_stats(cuda_version, benchmark, test, sass, line_debug):
+def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
