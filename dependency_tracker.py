@@ -472,6 +472,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
     kernel_name = "kernel-"
     began_print = False
     skipping_kernel = False
+    temp_thread_block = ""
     with open(sim_file, 'r', encoding = 'utf-8') as sim_file:
         for line in sim_file:
             # Gather kernel info
@@ -512,13 +513,14 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                 sim_stats[kernel_name]["block_dim"] = block_dim
             elif not skipping_kernel and "local mem base_addr =" in line:
                 sim_stats[kernel_name]["local_mem_base_addr"] = (line.split(' ')[-1]).rstrip()
+            elif not skipping_kernel and "thread block = " in line:
+                temp_thread_block = line.split(' ')[3].rstrip()
 
 
             # Get start and end times for ctas
             elif not skipping_kernel and "Started CTA" in line:
                 line_fields = line.split(' ')
-                # FIXME in simulator (need to find better way to get ctaid)
-                thread_block = line_fields[5][line_fields[5].index('#') + 1:] + ',0,0'
+                thread_block = temp_thread_block
                 if thread_block not in sim_stats[kernel_name]["thread_blocks"]:
                     sim_stats[kernel_name]["thread_blocks"][thread_block] = {}
                     sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"] = {}
@@ -634,7 +636,7 @@ def find_dependencies(kernel_name, depth, info):
         for current_address in info[kernel_name]["thread_blocks"]\
                 [current_block]["mem_addrs"]:
 
-            cur_addr_check = int(current_address, 16) & 0xFFFFFFFFFFB0
+            cur_addr_check = int(current_address, 16) & 0xFFFFFFFFFFC0
             # Covers all subsequent kernels - takes FOREVER
             for future_kernel in range(kernel + 1, min(kernel + depth + 1, end_kernel)):
                 future_kernel_name = 'kernel-' + str(future_kernel)
@@ -646,7 +648,7 @@ def find_dependencies(kernel_name, depth, info):
                         continue
 
                     # If current address matches any address in future thread block, add
-                    if cur_addr_check in list(map(lambda x: (int(x, 16) & 0xFFFFFFFFFFB0), \
+                    if cur_addr_check in list(map(lambda x: (int(x, 16) & 0xFFFFFFFFFFC0), \
                             info[future_kernel_name]["thread_blocks"]\
                             [future_block]["mem_addrs"])):
                         dependencies[kernel_name][current_block_name].append(\
@@ -764,6 +766,14 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                     node_width = '3' if (kernel_match and thread_block_match) else '2'
                     thread_block_label = ('<<b>' + thread_block + '</b>>') if \
                             (kernel_match and thread_block_match) else thread_block
+
+                    # Add time info for sim graph
+                    if info_name == 'sim':
+                        time = info[kernel_name]["thread_blocks"][thread_block]["time"]
+                        thread_block_label = ('<<b>' + thread_block + '<br/>' + \
+                                time + '</b>>') if (kernel_match and thread_block_match)\
+                                else ('<' + thread_block + '<br/>' + time + '>')
+
                     thread_block_id = kernel_name + '_' + thread_block
                     current_kernel.node(thread_block_id, thread_block_label, \
                             style="rounded,filled", color="black", \
@@ -779,6 +789,14 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                                 else '2'
                         thread_block_label = ('<<b>' + thread_block + '</b>>') if \
                                 (kernel_match and thread_block_match) else thread_block
+
+                        # Add time info for sim graph
+                        if info_name == 'sim':
+                            time = info[kernel_name]["thread_blocks"][thread_block]["time"]
+                            thread_block_label = ('<<b>' + thread_block + '<br/>' + \
+                                    time + '</b>>') if (kernel_match and thread_block_match)\
+                                    else ('<' + thread_block + '<br/>' + time + '>')
+
                         thread_block_id = kernel_name + '_' + thread_block
                         current_kernel.node(thread_block_id, thread_block_label, \
                                 style="rounded,filled", color="black", \
