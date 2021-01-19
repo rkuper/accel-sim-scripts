@@ -11,6 +11,7 @@ and thread block dependencies
 import os
 import sys
 import time
+import string
 import multiprocessing as mp
 from functools import partial
 import argparse
@@ -28,7 +29,8 @@ kernel_traces = {}
 sim_stats = {}
 start_kernel = 0
 end_kernel = float('inf')
-tbd_graph = Digraph(comment='Kernel Trace Dependencies', strict=True)
+trace_tbd_graph = Digraph(comment='Kernel Trace Dependencies', strict=True)
+sim_tbd_graph = Digraph(comment='Kernel Sim Dependencies', strict=True)
 
 
 
@@ -97,9 +99,10 @@ def arg_wrapper():
         print("End kernel should not be earlier than the starting kernel\n")
         end_kernel = float('inf')
 
+    # KERNEL TRACES for next ~30 lines
     # If data exists and want to use, skip getting it again
     if args.open and os.path.isfile('kernel_traces.json'):
-        kernel_trace_title = "=   Getting Kernel Traces   ="
+        kernel_trace_title = "=   Getting Kernel Traces From kernel_traces.json  ="
         kernel_trace_title = ("=" * len(kernel_trace_title)) + "\n"  + \
                 kernel_trace_title + "\n" + ("=" * len(kernel_trace_title))
         print(kernel_trace_title)
@@ -115,13 +118,14 @@ def arg_wrapper():
     else:
         # Manage kernel traces
         parse_trace_files(device_number, cuda_version, args.benchmark, \
-                args.test, args.line_debug, depth)
+                args.test, args.line_debug)
 
         # Grab kernel trace dependencies
         print('Grabbing dependencies...', end = ' ')
         sys.stdout.flush()
         pool = mp.Pool(mp.cpu_count())
-        specific_dependencies = partial(trace_dependencies, depth=depth)
+        specific_dependencies = partial(find_dependencies, depth=depth, \
+                info=kernel_traces)
         all_kernel_dependencies = pool.map(specific_dependencies, \
                 kernel_traces.keys())
         for kernel_dependencies in all_kernel_dependencies:
@@ -130,11 +134,43 @@ def arg_wrapper():
                     kernel_dependencies[kernel_name]
         print('Done')
 
-    # Manage sim output
-    parse_sim_output(cuda_version, args.benchmark, args.test, sass, args.line_debug)
+    # SIM STATS in next ~30 lines
+    # If data exists and want to use, skip getting it again
+    if args.open and os.path.isfile('sim_stats.json'):
+        sim_stats_title = "=   Getting Simulation Info From sim_stats.json   ="
+        sim_stats_title = ("=" * len(sim_stats_title)) + "\n"  + \
+                sim_stats_title + "\n" + ("=" * len(sim_stats_title))
+        print(sim_stats_title)
+        global sim_stats
+        print("Gathering sim_stats.json data...", end = ' ')
+        sim_stats = json.load(open('sim_stats.json', 'r'))
+        print("Done")
+        kernels = sorted(sim_stats.keys())
+        start_kernel = int(kernels[0].split('-')[1])
+        end_kernel = int(kernels[-1].split('-')[1])
+        print("Using kernels " + str(start_kernel) + "-" + str(end_kernel))
+
+    else:
+        # Manage kernel traces
+        parse_sim_output(cuda_version, args.benchmark, args.test, sass, \
+                args.line_debug)
+
+        # Grab kernel trace dependencies
+        print('Grabbing dependencies...', end = ' ')
+        sys.stdout.flush()
+        pool = mp.Pool(mp.cpu_count())
+        specific_dependencies = partial(find_dependencies, depth=depth, \
+                info=sim_stats)
+        all_kernel_dependencies = pool.map(specific_dependencies, \
+                sim_stats.keys())
+        for kernel_dependencies in all_kernel_dependencies:
+            kernel_name = list(kernel_dependencies.keys())[0]
+            sim_stats[kernel_name]["dependencies"] = \
+                    kernel_dependencies[kernel_name]
+        print('Done')
 
     # Manage trace stats
-    print_trace_stats(args.graph)
+    print_dependency_stats(args.graph)
 
     # Print kernel names
     print_kernel_names()
@@ -146,19 +182,28 @@ def arg_wrapper():
             json.dump(kernel_traces, fp)
         print("Done")
 
+        print("Writing file 'sim_stats.json...'", end = ' ')
+        with open('sim_stats.json','w') as fp:
+            json.dump(sim_stats, fp)
+        print("Done")
+
     # Note for info
-    print("\n*** NOTE: Add third arguement 'view' in " + \
-            "graph_dependencies(kernels=[], thread_blocks=[], view=...) to show:")
+    print("\n*** NOTE: Third arguement 'view' in " + \
+            "graph_dependencies(kernels=[], thread_blocks=[], view=..., source=...)" + \
+            " can show:")
     print("\t'all': everything")
     print("\t'kernel': kernels and the kernels they depend on (no shown thread_block)")
     print("\t'thread-block': kernels and the selected thread blocks, " + \
-            "along with the kernels and thread blocks that depend on them\n")
+            "along with the kernels\n\t and thread blocks that depend on them\n")
+    print("Fourth argument 'source' specifies either:")
+    print("\t'trace': dependencies from the kernel_traces structure")
+    print("\t'sim': dependencies from the sim_stats structure\n")
 
     return
 
 
 
-def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug, depth):
+def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
@@ -302,9 +347,9 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug, 
                                 ["warps"][current_warp]["mem_addrs"]) == 0):
                            del kernel_traces[kernel_name]["thread_blocks"][current_block]\
                                    ["warps"][current_warp]
-                        if (not line_debug) and (len(kernel_traces[kernel_name]\
-                                ["thread_blocks"][current_block]["warps"]) == 0):
-                           del kernel_traces[kernel_name]["thread_blocks"][current_block]
+                        # if (not line_debug) and (len(kernel_traces[kernel_name]\
+                        #         ["thread_blocks"][current_block]["warps"]) == 0):
+                        #    del kernel_traces[kernel_name]["thread_blocks"][current_block]
                     elif "insts = " in line:
                         warp_insts = int(line.split(' ')[-1])
                         kernel_traces[kernel_name]["thread_blocks"][current_block]\
@@ -373,45 +418,6 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug, 
 
                 print('Done')
     return
-
-
-
-# def trace_dependencies(depth, kernel_name, dependencies):
-def trace_dependencies(kernel_name, depth):
-    if start_kernel == (end_kernel - 1):
-        return
-
-    dependencies = {}
-    dependencies[kernel_name] = {}
-    kernel = int(kernel_name.split('-')[1])
-    for current_block in kernel_traces[kernel_name]["thread_blocks"]:
-
-        # Set up the current block dependency list
-        current_block_name = kernel_name + '_' + str(current_block)
-        dependencies[kernel_name][current_block_name] = []
-
-        for current_address in kernel_traces[kernel_name]["thread_blocks"]\
-                [current_block]["mem_addrs"]:
-
-            cur_addr_check = int(current_address, 16) & 0xFFFFFFB0
-            # Covers all subsequent kernels - takes FOREVER
-            for future_kernel in range(kernel + 1, min(kernel + depth + 1, end_kernel)):
-                future_kernel_name = 'kernel-' + str(future_kernel)
-                for future_block in kernel_traces[future_kernel_name]["thread_blocks"]:
-                    future_block_name = future_kernel_name + '_' + str(future_block)
-
-                    # If current address matches any address in future thread block, add
-                    if cur_addr_check in list(map(lambda x: (int(x, 16) & 0xFFFFFFB0), \
-                            kernel_traces[future_kernel_name]["thread_blocks"]\
-                            [future_block]["mem_addrs"])):
-                        dependencies[kernel_name][current_block_name].append(\
-                                future_block_name)
-
-        # Remove independent blocks
-        if len(dependencies[kernel_name][current_block_name]) == 0:
-            del dependencies[kernel_name][current_block_name]
-
-    return dependencies
 
 
 
@@ -484,7 +490,9 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                 sim_stats[kernel_name]["id"] = kernel_id
                 sim_stats[kernel_name]["mem_addrs"] = []
                 sim_stats[kernel_name]["num_mem_insts"] = 0
-                sim_stats[kernel_name]["mem_insts"] = {}
+                sim_stats[kernel_name]["thread_blocks"] = {}
+                sim_stats[kernel_name]["dependencies"] = {}
+                sim_stats[kernel_name]["kernel_name"] = temp_kernel_name
                 began_print = True
                 print("Parsing kernel " + str(kernel_id) + "...", end = ' ')
                 sys.stdout.flush()
@@ -505,6 +513,36 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
             elif not skipping_kernel and "local mem base_addr =" in line:
                 sim_stats[kernel_name]["local_mem_base_addr"] = (line.split(' ')[-1]).rstrip()
 
+
+            # Get start and end times for ctas
+            elif not skipping_kernel and "Started CTA" in line:
+                line_fields = line.split(' ')
+                # FIXME in simulator (need to find better way to get ctaid)
+                thread_block = line_fields[5][line_fields[5].index('#') + 1:] + ',0,0'
+                if thread_block not in sim_stats[kernel_name]["thread_blocks"]:
+                    sim_stats[kernel_name]["thread_blocks"][thread_block] = {}
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"] = {}
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["mem_addrs"] = []
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["num_mem_insts"] = 0
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["start_time"] = \
+                            line_fields[6][line_fields[6].index('(') + 1:\
+                            line_fields[6].index(',')]
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["end_time"] = 0
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["time"] = 0
+
+            elif not skipping_kernel and "Finished CTA" in line:
+                line_fields = line.split(' ')
+                thread_block = line_fields[4][line_fields[4].index('(') + 1:\
+                        line_fields[4].index(')')]
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["end_time"] = \
+                            line_fields[6][line_fields[6].index('(') + 1:\
+                            line_fields[6].index(',')]
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["time"] = \
+                            str(int(sim_stats[kernel_name]["thread_blocks"][thread_block]\
+                            ["end_time"]) - int(sim_stats[kernel_name]["thread_blocks"]\
+                            [thread_block]["start_time"]))
+
+
             # Begin parsing mem instructions
             elif not skipping_kernel and "mf:" in line:
                 # Grab only the global memory instructions
@@ -512,31 +550,64 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                     continue
 
                 # Clean up the list a little bit
-                line_fields = line.strip().replace(',', '').split(' ')
+                line_fields = line.strip().split(' ')
                 if '' in line_fields:
                     line_fields.remove('')
+                if ',' in line_fields:
+                    line_fields.remove(',')
+                if line_fields[2].replace(',','').isdigit():
+                    line_fields[1] += line_fields[2].replace(',','')
+                    del line_fields[2]
 
-                inst_id = kernel_name + '_' + str(line_fields[13])
-                sim_stats[kernel_name]["mem_insts"][inst_id] = {}
+                # Add the thread block info to put info into
+                thread_block = line_fields[13].split('=')[1]
+
+                # Add the warp info to put info into
+                warp = line_fields[2][line_fields[2].index('w') + 1:\
+                        line_fields[2].index(',')]
+                warp = str(int(warp))
+                if warp not in sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]:
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                            [warp] = {}
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                            [warp]["mem_insts"] = {}
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                            [warp]["mem_addrs"] = []
+
+                inst = line_fields[1].split('=')[1]
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                        [warp]["mem_insts"][inst] = {}
+
+                # Add all important fields
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                        [warp]["mem_insts"][inst]["pc"] = hex(int(line_fields[12], 16))
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                        [warp]["mem_insts"][inst]["sid"] = line_fields[2]\
+                        [line_fields[2].index('d') + 1:line_fields[2].index(':')]
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                        [warp]["mem_insts"][inst]["type"] = line_fields[5].replace(',', '')
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                        [warp]["mem_insts"][inst]["mask"] = line_fields[15]\
+                        [line_fields[15].index('[') + 1:line_fields[15].index(']') - 1]
+
+                # Add the address and set to hex
+                address = hex(int(line_fields[4][line_fields[4].index('=') + 1:\
+                        line_fields[4].index(',')], 16))
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                        [warp]["mem_insts"][inst]["addr"] = address
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                        [warp]["mem_addrs"].append(address)
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["mem_addrs"]\
+                        .append(address)
+                sim_stats[kernel_name]["mem_addrs"].append(address)
 
                 # Only include the line in debug mode
                 if line_debug:
-                    sim_stats[kernel_name]["mem_insts"][inst_id]["line"] = line.strip()
-
-                # Add all important fields
-                sim_stats[kernel_name]["mem_insts"][inst_id]["pc"] = hex(int(line_fields[13], 16))
-                sim_stats[kernel_name]["mem_insts"][inst_id]["type"] = line_fields[6]
-                sim_stats[kernel_name]["mem_insts"][inst_id]["mask"] = line_fields[14]\
-                        [line_fields[14].index('[') + 1:line_fields[14].index(']') - 1]
-                sim_stats[kernel_name]["mem_insts"][inst_id]["warp"] = line_fields[3]\
-                        [line_fields[3].index('w') + 1:]
-
-                # Add the address and set to hex
-                address = hex(int(line_fields[5][line_fields[5].index('=') + 1:], 16))
-                sim_stats[kernel_name]["mem_insts"][inst_id]["address"] = address
-                sim_stats[kernel_name]["mem_addrs"].append(address)
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                            [warp]["mem_insts"][inst]["line"] = line.strip()
 
                 # Increment counters
+                sim_stats[kernel_name]["thread_blocks"][thread_block]["num_mem_insts"] += 1
                 sim_stats[kernel_name]["num_mem_insts"] += 1
 
         # Print that the sim trace for ending kernel is done
@@ -546,13 +617,66 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
 
 
 
+# def find_dependencies(depth, kernel_name, dependencies):
+def find_dependencies(kernel_name, depth, info):
+    if start_kernel == (end_kernel - 1):
+        return
+
+    dependencies = {}
+    dependencies[kernel_name] = {}
+    kernel = int(kernel_name.split('-')[1])
+    for current_block in info[kernel_name]["thread_blocks"]:
+
+        # Set up the current block dependency list
+        current_block_name = kernel_name + '_' + str(current_block)
+        dependencies[kernel_name][current_block_name] = []
+
+        for current_address in info[kernel_name]["thread_blocks"]\
+                [current_block]["mem_addrs"]:
+
+            cur_addr_check = int(current_address, 16) & 0xFFFFFFFFFFB0
+            # Covers all subsequent kernels - takes FOREVER
+            for future_kernel in range(kernel + 1, min(kernel + depth + 1, end_kernel)):
+                future_kernel_name = 'kernel-' + str(future_kernel)
+                for future_block in info[future_kernel_name]["thread_blocks"]:
+                    future_block_name = future_kernel_name + '_' + str(future_block)
+
+                    # No duplicates
+                    if future_block_name in dependencies[kernel_name][current_block_name]:
+                        continue
+
+                    # If current address matches any address in future thread block, add
+                    if cur_addr_check in list(map(lambda x: (int(x, 16) & 0xFFFFFFFFFFB0), \
+                            info[future_kernel_name]["thread_blocks"]\
+                            [future_block]["mem_addrs"])):
+                        dependencies[kernel_name][current_block_name].append(\
+                                future_block_name)
+
+        # Remove independent blocks
+        if len(dependencies[kernel_name][current_block_name]) == 0:
+            del dependencies[kernel_name][current_block_name]
+
+    return dependencies
+
+
+
 """""""""""""""
 
   Output Funcs
 
 """""""""""""""
 
-def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
+def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all'):
+    if (source == 'all') or (source == 'trace'):
+        graph_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
+            view=view, info=kernel_traces, graph=trace_tbd_graph, info_name="trace")
+
+    if (source == 'all') or (source == 'sim'):
+        graph_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
+            view=view, info=sim_stats, graph=sim_tbd_graph, info_name="sim")
+    return
+
+def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_name):
 
     # Grab all needed info from the dependency section of stats/traces
     needed_info = {}
@@ -568,7 +692,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
                 needed_info[kernel_name]["kernels"] = []
 
             # Add all dependent blocks to kernel info
-            for block_depend in kernel_traces[kernel_name]["dependencies"]:
+            for block_depend in info[kernel_name]["dependencies"]:
                 thread_block = block_depend.split('_')[1]
 
                 # If looking only at specific thread blocks, ignore the irrelevant information
@@ -580,7 +704,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
                     needed_info[kernel_name]["dependencies"][block_depend] = []
 
                 # Add all other kernel block dependencies to their kernel info
-                for dependency in kernel_traces[kernel_name]["dependencies"][block_depend]:
+                for dependency in info[kernel_name]["dependencies"][block_depend]:
                     kernel_dependency = dependency.split('_')[0]
                     thread_block_dependency = dependency.split('_')[1]
 
@@ -603,24 +727,24 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
 
 
     # Begin creating the graph
-    tbd_graph.clear()
+    graph.clear()
     sys.stdout.flush()
 
     # For 'thread_block' or 'all' mode
     if view != 'kernel':
-        tbd_graph.attr(ranksep="3")
+        graph.attr(ranksep="3")
         for kernel_name in needed_info:
             kernel = int(kernel_name.split('-')[1])
             kernel_match = (kernel in kernels) or (len(kernels) == 0)
 
             # Add/Change kernels and internal nodes
-            with tbd_graph.subgraph(name=("cluster" + str(kernel))) as current_kernel:
+            with graph.subgraph(name=("cluster" + str(kernel))) as current_kernel:
 
                 # If on a requested kernel
                 fill_color = '#f72116bb' if (kernel in kernels or len(kernels) == 0) \
                         else '#f7211640'
                 kernel_width = '5' if (kernel in kernels) else '3'
-                short_kernel_name = kernel_traces[kernel_name]["kernel_name"].split('_')
+                short_kernel_name = info[kernel_name]["kernel_name"].split('_')
                 short_kernel_name = short_kernel_name[0] + short_kernel_name[1] + \
                         '-' + short_kernel_name[2]
                 kernel_label = '<<br/><font point-size="20"><b>' + kernel_name + \
@@ -671,16 +795,16 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
 
                 # Draw/Redraw the edges or for the first time
                 for dependency in needed_info[kernel_name]["dependencies"][block_depend]:
-                    tbd_graph.edge(block_depend, dependency, color=edge_color, \
+                    graph.edge(block_depend, dependency, color=edge_color, \
                             penwidth=edge_weight)
 
     # For 'kernel' mode
     else:
-        tbd_graph.attr(ranksep="1")
+        graph.attr(ranksep="1")
         for kernel_name in needed_info:
             kernel = int(kernel_name.split('-')[1])
             kernel_match = (kernel in kernels) or (len(kernels) == 0)
-            short_kernel_name = kernel_traces[kernel_name]["kernel_name"].split('_')
+            short_kernel_name = info[kernel_name]["kernel_name"].split('_')
             short_kernel_name = short_kernel_name[0] + short_kernel_name[1] + \
                     '-' + short_kernel_name[2]
             kernel_label = '<<br/><font point-size="20"><b>' + kernel_name + \
@@ -689,7 +813,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
                     '<br/></font>>'
             node_color = '#f72116bb' if (kernel_match) else '#f7211640'
             node_width = '3' if (kernel_match) else '2'
-            tbd_graph.node(kernel_name, kernel_label, shape="box", \
+            graph.node(kernel_name, kernel_label, shape="box", \
                     style="bold,rounded,filled", color="black", fillcolor=node_color, \
                     penwidth=node_width)
         for kernel_name in needed_info:
@@ -698,18 +822,18 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all'):
             edge_weight = '3' if (kernel_match) else '1'
             edge_color = '#000000ff' if (kernel_match) else '#00000006'
             for kernel_dependency in needed_info[kernel_name]["kernels"]:
-                tbd_graph.edge(kernel_name, kernel_dependency, color=edge_color, \
+                graph.edge(kernel_name, kernel_dependency, color=edge_color, \
                         penwidth=edge_weight)
 
-    create_graph_pdf()
+    create_graph_pdf(info_name, graph)
     return
 
 
 
-def create_graph_pdf():
-    print('Creating kernel trace dependency graph...', end = ' ')
+def create_graph_pdf(info_name, graph):
+    print('Creating ' + info_name + ' dependency graph...', end = ' ')
     sys.stdout.flush()
-    tbd_graph.render('kernel_dependencies.gv')
+    graph.render((info_name + '_dependencies.gv'))
     print('Done')
     return
 
@@ -783,66 +907,71 @@ def get_test(path, test_str):
 
 """""""""""""""
 
-def print_inst(kernel, pc):
-    kernel_name = "kernel-" + str(kernel)
-    inst_name = kernel_name + "_" + str(hex(pc))
+# TODO: fix this to work with sim_stats
+# def print_inst(kernel, pc):
+#     kernel_name = "kernel-" + str(kernel)
+#     inst_name = kernel_name + "_" + str(hex(pc))
 
-    kernel_inst_title = "=   Kernel Trace for:" + inst_name + "   ="
-    kernel_inst_title = "\n" + ("=" * len(kernel_inst_title)) + "\n" + \
-            kernel_inst_title + "\n" + ("=" * len(kernel_inst_title))
-    print(kernel_inst_title)
-    for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
-        for warp in kernel_traces[kernel_name]["thread_blocks"][thread_block]["warps"]:
-            for mem_inst in kernel_traces[kernel_name]["thread_blocks"][thread_block]\
-                    ["warps"][warp]["mem_insts"]:
-                if mem_inst == inst_name:
-                    print(str(warp) + " ", end = '')
-                    pprint.pprint(kernel_traces[kernel_name]["thread_blocks"]\
-                            [thread_block]["warps"][warp]["mem_insts"][mem_inst])
+#     kernel_inst_title = "=   Kernel Trace for:" + inst_name + "   ="
+#     kernel_inst_title = "\n" + ("=" * len(kernel_inst_title)) + "\n" + \
+#             kernel_inst_title + "\n" + ("=" * len(kernel_inst_title))
+#     print(kernel_inst_title)
+#     for thread_block in kernel_traces[kernel_name]["thread_blocks"]:
+#         for warp in kernel_traces[kernel_name]["thread_blocks"][thread_block]["warps"]:
+#             for mem_inst in kernel_traces[kernel_name]["thread_blocks"][thread_block]\
+#                     ["warps"][warp]["mem_insts"]:
+#                 if mem_inst == inst_name:
+#                     print(str(warp) + " ", end = '')
+#                     pprint.pprint(kernel_traces[kernel_name]["thread_blocks"]\
+#                             [thread_block]["warps"][warp]["mem_insts"][mem_inst])
 
-    sim_inst_title = "=   Simulation Output for:" + inst_name + "   ="
-    sim_inst_title = "\n" + ("=" * len(sim_inst_title)) + "\n"  + sim_inst_title + \
-            "\n" + ("=" * len(sim_inst_title))
-    print(sim_inst_title)
-    for mem_inst in sim_stats[kernel_name]["mem_insts"]:
-        if mem_inst == inst_name:
-            pprint.pprint(sim_stats[kernel_name]["mem_insts"][mem_inst])
-    return
+#     sim_inst_title = "=   Simulation Output for:" + inst_name + "   ="
+#     sim_inst_title = "\n" + ("=" * len(sim_inst_title)) + "\n"  + sim_inst_title + \
+#             "\n" + ("=" * len(sim_inst_title))
+#     print(sim_inst_title)
+#     for mem_inst in sim_stats[kernel_name]["mem_insts"]:
+#         if mem_inst == inst_name:
+#             pprint.pprint(sim_stats[kernel_name]["mem_insts"][mem_inst])
+#     return
 
 
-def print_trace_stats(graph):
+def print_dependency_stats(graph):
     dependency_stats_title = "=   Dependency Stats   ="
     dependency_stats_title = "\n" + ("=" * len(dependency_stats_title)) + "\n" + \
             dependency_stats_title + "\n" + ("=" * len(dependency_stats_title))
     print(dependency_stats_title)
     if graph:
-        global tbd_graph
+        global trace_tbd_graph, sim_tbd_graph
         graph_dependencies()
 
-    # TODO:
-    # Find number of indendent thread blocks per kernel
-    # Find most dependent kernel AND threadblock
+    # Kernel trace info
     for kernel in range(start_kernel, end_kernel):
         kernel_name = 'kernel-' + str(kernel)
-        print("Dependent thread_blocks in " + kernel_name + ":", end = ' ')
+        print("Dependent trace thread_blocks in " + kernel_name + ":", end = ' ')
         print(str(len(kernel_traces[kernel_name]["dependencies"])), end = '')
         print("/" + str(len(kernel_traces[kernel_name]["thread_blocks"])))
-    indendent_blocks = 0
+
+    # Sim stat info
+    for kernel in range(start_kernel, end_kernel):
+        kernel_name = 'kernel-' + str(kernel)
+        print("Dependent sim thread_blocks in " + kernel_name + ":", end = ' ')
+        print(str(len(sim_stats[kernel_name]["dependencies"])), end = '')
+        print("/" + str(len(sim_stats[kernel_name]["thread_blocks"])))
     return
 
 
-def print_dependencies():
+def print_dependencies(info=kernel_traces):
     kernel_list = []
-    for kernel in kernel_traces:
+    for kernel in info:
         kernel_list.append(int(kernel.split('-')[1]))
     kernel_list = sorted(kernel_list)
 
     for kernel in range(kernel_list[0], kernel_list[-1]):
         kernel_name = 'kernel-' + str(kernel)
-        if len(kernel_traces[kernel_name]['dependencies']) == 0:
+        if len(info[kernel_name]['dependencies']) == 0:
             continue
         print('\'' + kernel_name + '\':', end = '\n\t')
-        pprint.pprint(kernel_traces[kernel_name]['dependencies'])
+        pprint.pprint(info[kernel_name]['dependencies'])
     return
 
 
