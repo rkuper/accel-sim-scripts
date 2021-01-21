@@ -907,19 +907,17 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                     dependency_type = dependency_info[2]
                     dependency_id = dependency_info[0] + '_' + dependency_info[1]
 
-                    # Blue if RAW and Green if WAW
-                    # edge_color = '#0036b2' if (dependency_type == 'RAW') else '#00b203'
-                    edge_color = '#000000'
-
                     # Blue
                     if  dependency_type == 'RAW':
                         edge_color = '#00529a'
-                    # Rurple
-                    # elif dependency_type == 'WAR':
-                    #     edge_color = '#9a0045'
                     # Green
                     elif dependency_type == 'WAW':
                         edge_color = '#0f9a00'
+                    # Rurple
+                    # elif dependency_type == 'WAR':
+                    #     edge_color = '#9a0045'
+                    else:
+                        edge_color = '#000000'
 
                     graph.edge(block_depend, dependency_id, color=(edge_color + edge_op), \
                             penwidth=edge_weight)
