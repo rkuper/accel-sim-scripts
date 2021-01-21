@@ -322,8 +322,8 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
                         kernel_traces[kernel_name]["thread_blocks"][current_block]\
                                 ["num_mem_insts"] = 0
                         new_thread_block = True
-                    elif "warp = " in line:
 
+                    elif "warp = " in line:
                         # Remove previous warp if nothing exists, UNLESS IN DEBUG
                         if (not line_debug) and (not new_thread_block) and (len(\
                                 kernel_traces[kernel_name]["thread_blocks"][current_block]\
@@ -339,17 +339,15 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
                         kernel_traces[kernel_name]["thread_blocks"][current_block]\
                                 ["warps"][current_warp]["mem_addrs"] = []
                         new_thread_block = False
-                    elif "#END_TB" in line:
 
+                    elif "#END_TB" in line:
                         # Remove previous warp if nothing exists, UNLESS IN DEBUG
                         if (not line_debug) and (not new_thread_block) and (len(\
                                 kernel_traces[kernel_name]["thread_blocks"][current_block]\
                                 ["warps"][current_warp]["mem_addrs"]) == 0):
                            del kernel_traces[kernel_name]["thread_blocks"][current_block]\
                                    ["warps"][current_warp]
-                        # if (not line_debug) and (len(kernel_traces[kernel_name]\
-                        #         ["thread_blocks"][current_block]["warps"]) == 0):
-                        #    del kernel_traces[kernel_name]["thread_blocks"][current_block]
+
                     elif "insts = " in line:
                         warp_insts = int(line.split(' ')[-1])
                         kernel_traces[kernel_name]["thread_blocks"][current_block]\
@@ -367,8 +365,8 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
                         inst_name = kernel_name + "_0x" + line_fields[0]
 
                         # Skip if address is somehow 0
-                        address = hex(int(line_fields[9], 16))
-                        if str(address) == '0x0':
+                        address = int(line_fields[9], 16)
+                        if str(hex(address)) == '0x0' or hex(address) == 0:
                             continue
 
                         kernel_traces[kernel_name]["thread_blocks"][current_block]\
@@ -377,14 +375,6 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
                             kernel_traces[kernel_name]["thread_blocks"][current_block]\
                                     ["warps"][current_warp]["mem_insts"][inst_name]\
                                     ["line"] = line.rsplit()
-
-                        # Add the PC and mask values
-                        kernel_traces[kernel_name]["thread_blocks"][current_block]\
-                                ["warps"][current_warp]["mem_insts"][inst_name]\
-                                ["pc"] = hex(int(line_fields[0], 16))
-                        kernel_traces[kernel_name]["thread_blocks"][current_block]\
-                                ["warps"][current_warp]["mem_insts"][inst_name]\
-                                ["mask"] = hex(int(line_fields[1], 16))
 
                         # Add memory instruction type
                         mem_type = ""
@@ -398,16 +388,31 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
                                 ["warps"][current_warp]["mem_insts"][inst_name]\
                                 ["type"] = mem_type
 
+                        # Add the PC and mask values
+                        kernel_traces[kernel_name]["thread_blocks"][current_block]\
+                                ["warps"][current_warp]["mem_insts"][inst_name]\
+                                ["pc"] = hex(int(line_fields[0], 16))
+                        kernel_traces[kernel_name]["thread_blocks"][current_block]\
+                                ["warps"][current_warp]["mem_insts"][inst_name]\
+                                ["mask"] = hex(int(line_fields[1], 16))
+
                         # Add address info
                         kernel_traces[kernel_name]["thread_blocks"][current_block]\
                                 ["warps"][current_warp]["mem_insts"][inst_name]\
-                                ["addr"] = address
-                        if address != 0:
+                                ["addr"] = hex(address)
+                        line_address = address & 0xFFFFFFFFFF80
+                        type_address = hex(line_address | 0x1) if (mem_type == 'load')\
+                                else hex(line_address | 0x2)
+                        if type_address not in kernel_traces[kernel_name]["thread_blocks"]\
+                                [current_block]["warps"][current_warp]["mem_addrs"]:
                             kernel_traces[kernel_name]["thread_blocks"][current_block]\
-                                    ["warps"][current_warp]["mem_addrs"].append(address)
+                                    ["warps"][current_warp]["mem_addrs"].append(type_address)
+                        if type_address not in kernel_traces[kernel_name]["thread_blocks"]\
+                                [current_block]["mem_addrs"]:
                             kernel_traces[kernel_name]["thread_blocks"][current_block]\
-                                    ["mem_addrs"].append(address)
-                            kernel_traces[kernel_name]["mem_addrs"].append(address)
+                                    ["mem_addrs"].append(type_address)
+                        if type_address not in kernel_traces[kernel_name]["mem_addrs"]:
+                            kernel_traces[kernel_name]["mem_addrs"].append(type_address)
 
                         # Increment instruction counts
                         kernel_traces[kernel_name]["thread_blocks"][current_block]\
@@ -581,27 +586,37 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                         [warp]["mem_insts"][inst] = {}
 
                 # Add all important fields
+                mem_type = line_fields[5].replace(',', '')
                 sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
                         [warp]["mem_insts"][inst]["pc"] = hex(int(line_fields[12], 16))
                 sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
                         [warp]["mem_insts"][inst]["sid"] = line_fields[2]\
                         [line_fields[2].index('d') + 1:line_fields[2].index(':')]
                 sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
-                        [warp]["mem_insts"][inst]["type"] = line_fields[5].replace(',', '')
+                        [warp]["mem_insts"][inst]["type"] = mem_type
                 sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
                         [warp]["mem_insts"][inst]["mask"] = line_fields[15]\
                         [line_fields[15].index('[') + 1:line_fields[15].index(']') - 1]
 
                 # Add the address and set to hex
-                address = hex(int(line_fields[4][line_fields[4].index('=') + 1:\
-                        line_fields[4].index(',')], 16))
+                address = int(line_fields[4][line_fields[4].index('=') + 1:\
+                        line_fields[4].index(',')], 16)
+                line_address = address & 0xFFFFFFFFFF80
+                type_address = hex(line_address | 0x1) if (mem_type == 'load')\
+                        else hex(line_address | 0x2)
                 sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
-                        [warp]["mem_insts"][inst]["addr"] = address
-                sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
-                        [warp]["mem_addrs"].append(address)
-                sim_stats[kernel_name]["thread_blocks"][thread_block]["mem_addrs"]\
-                        .append(address)
-                sim_stats[kernel_name]["mem_addrs"].append(address)
+                        [warp]["mem_insts"][inst]["addr"] = hex(address)
+
+                if type_address not in sim_stats[kernel_name]["thread_blocks"]\
+                        [thread_block]["warps"][warp]["mem_addrs"]:
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
+                        [warp]["mem_addrs"].append(type_address)
+                if type_address not in sim_stats[kernel_name]["thread_blocks"]\
+                        [thread_block]["mem_addrs"]:
+                    sim_stats[kernel_name]["thread_blocks"][thread_block]["mem_addrs"]\
+                        .append(type_address)
+                if type_address not in sim_stats[kernel_name]["mem_addrs"]:
+                    sim_stats[kernel_name]["mem_addrs"].append(type_address)
 
                 # Only include the line in debug mode
                 if line_debug:
@@ -636,7 +651,9 @@ def find_dependencies(kernel_name, depth, info):
         for current_address in info[kernel_name]["thread_blocks"]\
                 [current_block]["mem_addrs"]:
 
-            cur_addr_check = int(current_address, 16) & 0xFFFFFFFFFFC0
+            cur_line_check = int(current_address, 16) & 0xFFFFFFFFFF80
+            before_type = 'R' if (int(current_address, 16) & 0x1) else 'W'
+
             # Covers all subsequent kernels - takes FOREVER
             for future_kernel in range(kernel + 1, min(kernel + depth + 1, end_kernel)):
                 future_kernel_name = 'kernel-' + str(future_kernel)
@@ -648,11 +665,16 @@ def find_dependencies(kernel_name, depth, info):
                         continue
 
                     # If current address matches any address in future thread block, add
-                    if cur_addr_check in list(map(lambda x: (int(x, 16) & 0xFFFFFFFFFFC0), \
-                            info[future_kernel_name]["thread_blocks"]\
-                            [future_block]["mem_addrs"])):
+                    if ((cur_line_check | 0x1) in list(map(lambda x: int(x, 16), info\
+                            [future_kernel_name]["thread_blocks"][future_block]\
+                            ["mem_addrs"]))) and (before_type == 'W'):
                         dependencies[kernel_name][current_block_name].append(\
-                                future_block_name)
+                                future_block_name + '_' + 'RA' + before_type)
+                    elif ((cur_line_check | 0x2) in list(map(lambda x: int(x, 16), info\
+                            [future_kernel_name]["thread_blocks"][future_block]\
+                            ["mem_addrs"]))) and (before_type == 'W'):
+                        dependencies[kernel_name][current_block_name].append(\
+                                future_block_name + '_' + 'WA' + before_type)
 
         # Remove independent blocks
         if len(dependencies[kernel_name][current_block_name]) == 0:
@@ -676,7 +698,15 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all'):
     if (source == 'all') or (source == 'sim'):
         graph_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
             view=view, info=sim_stats, graph=sim_tbd_graph, info_name="sim")
+
+    # Combine the two graphs
+    os.system("pdfunite trace_dependencies.gv.pdf sim_dependencies.gv.pdf " + \
+            "dependencies.gv.pdf")
+    os.system("rm -f trace_dependencies.gv.pdf")
+    os.system("rm -f sim_dependencies.gv.pdf")
     return
+
+
 
 def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_name):
 
@@ -731,6 +761,15 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
     # Begin creating the graph
     graph.clear()
     sys.stdout.flush()
+    kernel_description = 'all' if len(kernels) == 0 else str(kernels)
+    thread_blocks_description = 'all' if len(thread_blocks) == 0 else str(thread_blocks)
+    title = '<<font point-size="100"><b>'
+    title += 'Simulation Output' if (info_name == 'sim') else 'Trace File'
+    title += ' Dependencies</b><br/></font><font point-size="80">'
+    title += 'kernels=' + kernel_description + ', thread_blocks=' + \
+            thread_blocks_description + ', view=' + view
+    title += '<br/><br/><br/></font>>'
+    graph.attr(labelloc="t", label=title)
 
     # For 'thread_block' or 'all' mode
     if view != 'kernel':
@@ -808,12 +847,30 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                 thread_block_match = thread_block in thread_blocks
 
                 edge_weight = '3' if (kernel_match and thread_block_match) else '1'
-                edge_color = '#000000ff' if ((len(thread_blocks) == 0) or \
-                        (kernel_match and thread_block_match)) else '#00000006'
+                edge_op = 'ff' if ((len(thread_blocks) == 0) or \
+                        (kernel_match and thread_block_match)) else '06'
 
                 # Draw/Redraw the edges or for the first time
                 for dependency in needed_info[kernel_name]["dependencies"][block_depend]:
-                    graph.edge(block_depend, dependency, color=edge_color, \
+                    dependency_info = dependency.split('_')
+                    dependency_type = dependency_info[2]
+                    dependency_id = dependency_info[0] + '_' + dependency_info[1]
+
+                    # Blue if RAW and Green if WAW
+                    # edge_color = '#0036b2' if (dependency_type == 'RAW') else '#00b203'
+                    edge_color = '#000000'
+
+                    # Blue
+                    if  dependency_type == 'RAW':
+                        edge_color = '#00529a'
+                    # Rurple
+                    # elif dependency_type == 'WAR':
+                    #     edge_color = '#9a0045'
+                    # Green
+                    elif dependency_type == 'WAW':
+                        edge_color = '#0f9a00'
+
+                    graph.edge(block_depend, dependency_id, color=(edge_color + edge_op), \
                             penwidth=edge_weight)
 
     # For 'kernel' mode
