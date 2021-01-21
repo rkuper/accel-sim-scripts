@@ -240,8 +240,8 @@ def main():
             " can show:")
     print("\t'all': everything")
     print("\t'kernel': kernels and the kernels they depend on (no shown thread_block)")
-    print("\t'thread-block': kernels and the selected thread blocks, " + \
-            "along with the kernels\n\t and thread blocks that depend on them\n")
+    print("\t'thread-block': selected kernels and thread blocks, " + \
+            "along with dependent kernels and thread blocks\n")
     print("Fourth argument 'source' specifies either:")
     print("\t'trace': dependencies from the kernel_traces structure")
     print("\t'sim': dependencies from the sim_stats structure\n")
@@ -737,7 +737,8 @@ def find_dependencies(kernel_name, depth, info):
 
 """""""""""""""
 
-def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all'):
+def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', time_report=True):
+    graph_begin = time.time()
     if (source == 'all') or (source == 'trace'):
         graph_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
             view=view, info=kernel_traces, graph=trace_tbd_graph, info_name="trace")
@@ -751,6 +752,9 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all'):
             "dependencies.gv.pdf")
     os.system("rm -f trace_dependencies.gv.pdf")
     os.system("rm -f sim_dependencies.gv.pdf")
+
+    if time_report:
+        print("Graph Time: " + str(time.time() - graph_begin) + '\n')
     return
 
 
@@ -810,12 +814,12 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
     sys.stdout.flush()
     kernel_description = 'all' if len(kernels) == 0 else str(kernels)
     thread_blocks_description = 'all' if len(thread_blocks) == 0 else str(thread_blocks)
-    title = '<<font point-size="100"><b>'
+    title = '<<font point-size="100"><br/><b>'
     title += 'Simulation Output' if (info_name == 'sim') else 'Trace File'
     title += ' Dependencies</b><br/></font><font point-size="80">'
     title += 'kernels=' + kernel_description + ', thread_blocks=' + \
             thread_blocks_description + ', view=' + view
-    title += '<br/><br/><br/></font>>'
+    title += '<br/><br/><br/><br/></font>>'
     graph.attr(labelloc="t", label=title)
 
     # For 'thread_block' or 'all' mode
@@ -1079,7 +1083,7 @@ def print_dependency_stats(graph):
     print(dependency_stats_title)
     if graph:
         global trace_tbd_graph, sim_tbd_graph
-        graph_dependencies()
+        graph_dependencies(time_report=False)
 
     # Kernel trace info
     for kernel in range(start_kernel, end_kernel):
