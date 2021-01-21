@@ -40,7 +40,7 @@ sim_tbd_graph = Digraph(comment='Kernel Sim Dependencies', strict=True)
 
 """""""""""""""""""""
 
-def arg_wrapper():
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-b", "--benchmark", help = \
             "Specify the benchmark (ex. rnn_bench from Deepbench)")
@@ -66,6 +66,19 @@ def arg_wrapper():
     parser.add_argument("-g", "--graph", help = \
             "Output a graph of all kernel dependencies found", action='store_true')
     args = parser.parse_args()
+
+    # Set timing variables
+    total_begin = time.time()
+    parse_trace_begin = 0
+    parse_trace_end = 0
+    trace_dependencies_begin = 0
+    trace_dependencies_end = 0
+    parse_sim_begin = 0
+    parse_sim_end = 0
+    sim_dependencies_begin = 0
+    sim_dependencies_end = 0
+    graph_begin = 0
+    graph_end = 0
 
     # Get the GPU device number
     lspci = Popen("lspci", stdout=PIPE)
@@ -106,6 +119,8 @@ def arg_wrapper():
         kernel_trace_title = ("=" * len(kernel_trace_title)) + "\n"  + \
                 kernel_trace_title + "\n" + ("=" * len(kernel_trace_title))
         print(kernel_trace_title)
+        parse_trace_begin = time.time()
+        trace_dependencies_begin = time.time()
         global kernel_traces
         print("Gathering kernel_traces.json data...", end = ' ')
         kernel_traces = json.load(open('kernel_traces.json', 'r'))
@@ -113,16 +128,21 @@ def arg_wrapper():
         kernels = sorted(kernel_traces.keys())
         start_kernel = int(kernels[0].split('-')[1])
         end_kernel = int(kernels[-1].split('-')[1])
+        trace_dependencies_end = time.time()
+        parse_trace_end = time.time()
         print("Using kernels " + str(start_kernel) + "-" + str(end_kernel))
 
     else:
         # Manage kernel traces
+        parse_trace_begin = time.time()
         parse_trace_files(device_number, cuda_version, args.benchmark, \
                 args.test, args.line_debug)
+        parse_trace_end = time.time()
 
         # Grab kernel trace dependencies
         print('Grabbing dependencies...', end = ' ')
         sys.stdout.flush()
+        trace_dependencies_begin = time.time()
         pool = mp.Pool(mp.cpu_count())
         specific_dependencies = partial(find_dependencies, depth=depth, \
                 info=kernel_traces)
@@ -132,6 +152,7 @@ def arg_wrapper():
             kernel_name = list(kernel_dependencies.keys())[0]
             kernel_traces[kernel_name]["dependencies"] = \
                     kernel_dependencies[kernel_name]
+        trace_dependencies_end = time.time()
         print('Done')
 
     # SIM STATS in next ~30 lines
@@ -141,6 +162,8 @@ def arg_wrapper():
         sim_stats_title = ("=" * len(sim_stats_title)) + "\n"  + \
                 sim_stats_title + "\n" + ("=" * len(sim_stats_title))
         print(sim_stats_title)
+        parse_sim_begin = time.time()
+        sim_dependencies_begin = time.time()
         global sim_stats
         print("Gathering sim_stats.json data...", end = ' ')
         sim_stats = json.load(open('sim_stats.json', 'r'))
@@ -148,16 +171,21 @@ def arg_wrapper():
         kernels = sorted(sim_stats.keys())
         start_kernel = int(kernels[0].split('-')[1])
         end_kernel = int(kernels[-1].split('-')[1])
+        sim_dependencies_end = time.time()
+        parse_sim_end = time.time()
         print("Using kernels " + str(start_kernel) + "-" + str(end_kernel))
 
     else:
         # Manage kernel traces
+        parse_sim_begin = time.time()
         parse_sim_output(cuda_version, args.benchmark, args.test, sass, \
                 args.line_debug)
+        parse_sim_end = time.time()
 
         # Grab kernel trace dependencies
         print('Grabbing dependencies...', end = ' ')
         sys.stdout.flush()
+        sim_dependencies_begin = time.time()
         pool = mp.Pool(mp.cpu_count())
         specific_dependencies = partial(find_dependencies, depth=depth, \
                 info=sim_stats)
@@ -167,10 +195,13 @@ def arg_wrapper():
             kernel_name = list(kernel_dependencies.keys())[0]
             sim_stats[kernel_name]["dependencies"] = \
                     kernel_dependencies[kernel_name]
+        sim_dependencies_end = time.time()
         print('Done')
 
     # Manage trace stats
+    graph_begin = time.time()
     print_dependency_stats(args.graph)
+    graph_end = time.time()
 
     # Print kernel names
     print_kernel_names()
@@ -187,8 +218,24 @@ def arg_wrapper():
             json.dump(sim_stats, fp)
         print("Done")
 
+    # Timing information
+    print('')
+    timing_title = "=   Notable Timings   ="
+    timing_title = ("=" * len(timing_title)) + "\n"  + \
+        timing_title + "\n" + ("=" * len(timing_title))
+    print(timing_title)
+    print("Parse Trace Files Time: " + str(parse_trace_end - parse_trace_begin))
+    print("Get Trace Dependencies Time: " + str(trace_dependencies_end - \
+            trace_dependencies_begin))
+    print("Parse Simulation Output Time: " + str(parse_sim_end - parse_sim_begin))
+    print("Get Simulation Dependencies Time: " + str(sim_dependencies_end - \
+            sim_dependencies_begin))
+    print("Graph Time: " + str(graph_end - graph_begin))
+    print('---------------------------------')
+    print("Total Runtime: " + str((time.time() - total_begin)) + "s\n")
+
     # Note for info
-    print("\n*** NOTE: Third arguement 'view' in " + \
+    print("\n\n*** NOTE: Third arguement 'view' in " + \
             "graph_dependencies(kernels=[], thread_blocks=[], view=..., source=...)" + \
             " can show:")
     print("\t'all': everything")
@@ -1009,6 +1056,21 @@ def get_test(path, test_str):
 #             pprint.pprint(sim_stats[kernel_name]["mem_insts"][mem_inst])
 #     return
 
+def print_addr_counts():
+    address_counts = {}
+    for kernel_name in kernel_traces:
+        address_counts[kernel_name] = {}
+        for thread_block in kernel_traces[kernel_name]['thread_blocks']:
+            address_counts[kernel_name][thread_block] = {}
+            address_counts[kernel_name][thread_block]['kernel_traces'] = \
+                    len(kernel_traces[kernel_name]['thread_blocks']\
+                    [thread_block]['mem_addrs'])
+            address_counts[kernel_name][thread_block]['sim_stats'] = \
+                    len(sim_stats[kernel_name]['thread_blocks']\
+                    [thread_block]['mem_addrs'])
+
+    pprint.pprint(address_counts)
+    return
 
 def print_dependency_stats(graph):
     dependency_stats_title = "=   Dependency Stats   ="
@@ -1071,6 +1133,4 @@ def print_trace():
 
 
 if __name__=="__main__":
-    begin = time.time()
-    arg_wrapper()
-    print("Runtime: " + str((time.time() - begin)) + "s\n")
+    main()
