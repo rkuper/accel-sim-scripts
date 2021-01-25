@@ -244,9 +244,9 @@ def main():
     print("\t'thread-block': selected kernels and thread blocks, " + \
             "along with dependent kernels and thread blocks\n")
     print("Fourth argument 'source' specifies either:")
-    print("\t'trace': dependencies from the kernel_traces structure")
-    print("\t'sim': dependencies from the sim_stats structure\n")
-
+    print("\t'all': dependencies from the both data sets")
+    print("\t'trace': dependencies from the trace files")
+    print("\t'sim': dependencies from the simulation output\n")
     return
 
 
@@ -796,10 +796,17 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', t
             view=view, info=sim_stats, graph=sim_tbd_graph, info_name="sim")
 
     # Combine the two graphs
-    os.system("pdfunite trace_dependencies.gv.pdf sim_dependencies.gv.pdf " + \
-            "dependencies.gv.pdf")
-    os.system("rm -f trace_dependencies.gv.pdf")
-    os.system("rm -f sim_dependencies.gv.pdf")
+    if source == 'all':
+        os.system("pdfunite trace_dependencies.gv.pdf sim_dependencies.gv.pdf " + \
+                "dependencies.gv.pdf")
+        os.system("rm -f trace_dependencies.gv.pdf")
+        os.system("rm -f sim_dependencies.gv.pdf")
+    elif source == 'trace':
+        os.system("rm -f dependencies.gv.pdf")
+        os.system("mv trace_dependencies.gv.pdf dependencies.gv.pdf")
+    elif source == 'sim':
+        os.system("rm -f dependencies.gv.pdf")
+        os.system("mv sim_dependencies.gv.pdf dependencies.gv.pdf")
 
     if time_report:
         print("Graph Time: " + str(time.time() - graph_begin) + '\n')
