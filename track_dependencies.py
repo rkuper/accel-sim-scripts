@@ -632,17 +632,12 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                     line_fields.remove('')
                 if ',' in line_fields:
                     line_fields.remove(',')
-                if line_fields[2].replace(',','').isdigit():
-                    line_fields[1] += line_fields[2].replace(',','')
-                    del line_fields[2]
 
                 # Add the thread block info to put info into
-                thread_block = line_fields[13].split('=')[1]
+                thread_block = line_fields[10].split('=')[1]
 
                 # Add the warp info to put info into
-                warp = line_fields[2][line_fields[2].index('w') + 1:\
-                        line_fields[2].index(',')]
-                warp = str(int(warp))
+                warp = line_fields[3].split('=')[1]
                 if warp not in sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]:
                     sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
                             [warp] = {}
@@ -652,7 +647,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                             [warp]["mem_addrs"] = []
 
                 # inst = line_fields[1].split('=')[1]
-                inst = hex(int(line_fields[12], 16))
+                inst = hex(int(line_fields[9], 16))
                 if inst not in sim_stats[kernel_name]["thread_blocks"][thread_block]\
                         ["warps"][warp]["mem_insts"]:
                     sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
@@ -671,7 +666,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
 
 
                 # Add all important fields
-                mem_type = line_fields[5].replace(',', '')
+                mem_type = line_fields[6].replace(',', '')
                 # sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
                 #         [warp]["mem_insts"][inst]["sid"].append(line_fields[2]\
                 #         [line_fields[2].index('d') + 1:line_fields[2].index(':')])
@@ -683,8 +678,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                 #         line_fields[15].index(']') - 1])
 
                 # Add the address and set to hex
-                address = int(line_fields[4][line_fields[4].index('=') + 1:\
-                        line_fields[4].index(',')], 16)
+                address = int(line_fields[5].split('=')[1].replace(',', ''), 16)
                 line_address = address & 0xFFFFFFFFFF80
                 sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
                         [warp]["mem_insts"][inst]["addr"].append(hex(address))
@@ -1077,6 +1071,32 @@ def get_test(path, test_str):
                 return (path + "/" + subdir)
 
     return best_match
+
+
+def get_kernel_dependencies(info=sim_stats):
+    kernel_dependencies = {}
+    for kernel_name in info:
+        kernel_num = int(kernel_name.split("-")[1])
+        kernel_dependencies[kernel_num] = []
+        for block_dependency in info[kernel_name]["dependencies"]:
+            for dependency in info[kernel_name]["dependencies"][block_dependency]:
+                dependent_kernel = int((dependency.split("-")[1]).split("_")[0])
+                kernel_dependencies[kernel_num].append(dependent_kernel)
+    return kernel_dependencies
+
+
+def get_max_kernel_time():
+    return
+
+
+def get_estimated_time():
+    kernel_dependencies = get_kernel_dependencies()
+    starting_kernel_name = 'kernel-' + str(start_kernel)
+    current_kernel = starting_kernel_name
+    cost = 0
+    cost += max(sim_stats[current_kernel]["thread_blocks"], key=lambda x: x["time"])
+    print(str(cost))
+    return
 
 
 
