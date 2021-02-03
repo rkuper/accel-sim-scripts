@@ -317,12 +317,12 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug, 
         global start_kernel, end_kernel
         kernel_offset = int((sorted(kernel_numbers)[0]))
         start_kernel = max(start_kernel, kernel_offset)
-        last_kernel = number_of_kernels + kernel_offset
+        last_kernel = number_of_kernels + kernel_offset - 1
         end_kernel = last_kernel if end_kernel == float('inf') else \
-                min(last_kernel, (end_kernel + 1))
+                min(last_kernel, end_kernel)
 
         # Begin parsing each trace
-        for i in range(start_kernel, end_kernel):
+        for i in range(start_kernel, end_kernel + 1):
 
             # Get kernel info
             temp_kernel_name = ""
@@ -570,7 +570,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
             # Gather kernel info
             if "kernel id =" in line:
                 kernel_id = int(line.split(' ')[-1])
-                if (kernel_id < start_kernel) or (kernel_id > (end_kernel - 1)):
+                if (kernel_id < start_kernel) or (kernel_id > end_kernel):
                     skipping_kernel = True
                     continue
                 else:
@@ -736,7 +736,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
 
 # def find_dependencies(depth, kernel_name, dependencies):
 def find_dependencies(kernel_name, depth, info):
-    if start_kernel == (end_kernel - 1):
+    if start_kernel == end_kernel:
         return
 
     dependencies = {}
@@ -830,7 +830,7 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
 
     # Grab all needed info from the dependency section of stats/traces
     needed_info = {}
-    for kernel in range(start_kernel, end_kernel):
+    for kernel in range(start_kernel, end_kernel + 1):
         kernel_name = 'kernel-' + str(kernel)
         kernel_match = (kernel in kernels) or (len(kernels) == 0)
 
@@ -1263,14 +1263,14 @@ def print_dependency_stats(graph):
         graph_dependencies(time_report=False)
 
     # Kernel trace info
-    for kernel in range(start_kernel, end_kernel):
+    for kernel in range(start_kernel, end_kernel + 1):
         kernel_name = 'kernel-' + str(kernel)
         print("Dependent trace thread_blocks in " + kernel_name + ":", end = ' ')
         print(str(len(kernel_traces[kernel_name]["dependencies"])), end = '')
         print("/" + str(len(kernel_traces[kernel_name]["thread_blocks"])))
 
     # Sim stat info
-    for kernel in range(start_kernel, end_kernel):
+    for kernel in range(start_kernel, end_kernel + 1):
         kernel_name = 'kernel-' + str(kernel)
         print("Dependent sim thread_blocks in " + kernel_name + ":", end = ' ')
         print(str(len(sim_stats[kernel_name]["dependencies"])), end = '')
@@ -1334,7 +1334,7 @@ def print_kernel_names():
     kernel_names_title = "\n" + ("=" * len(kernel_names_title)) + "\n" + \
             kernel_names_title + "\n" + ("=" * len(kernel_names_title))
     print(kernel_names_title)
-    for kernel in range(start_kernel, end_kernel):
+    for kernel in range(start_kernel, end_kernel + 1):
         kernel_name = 'kernel-' + str(kernel)
         print(kernel_name + " - " + kernel_traces[kernel_name]["kernel_name"])
 
