@@ -1176,7 +1176,7 @@ def get_thread_block_estimated_time():
                     [thread_block]["time"])
             thread_block_id = current_kernel + '_' + thread_block
             nx_graph.add_edge('Start', thread_block_id, edge_weight)
-        if int(current_kernel_num <= end_kernel)
+        if int(current_kernel_num <= end_kernel):
             current_kernel_num += 1
             current_kernel = 'kernel-' + str(current_kernel_num)
 
@@ -1205,10 +1205,9 @@ def get_thread_block_estimated_time():
         for thread_block in sim_stats[current_kernel]["thread_blocks"]:
             thread_block_id = current_kernel + '_' + thread_block
             nx_graph.add_edge(thread_block_id, 'Finish', 0)
-        if int(current_kernel_num >= start_kernel)
+        if int(current_kernel_num >= start_kernel):
             current_kernel_num -= 1
             current_kernel = 'kernel-' + str(current_kernel_num)
-
 
     # TODO Dijkstras
 
