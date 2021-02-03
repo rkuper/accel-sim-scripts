@@ -214,7 +214,7 @@ def main():
     get_kernel_estimated_time(int(args.depth))
 
     # Print thread_block level estimated cycle time
-    get_thread_block_estimated_time()
+    get_thread_block_estimated_time(False)
 
     # Output to .json file
     if args.json:
@@ -800,15 +800,15 @@ def find_dependencies(kernel_name, depth, info):
 
 """""""""""""""
 
-def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', time_report=True):
+def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', time_report=True, path=[]):
     graph_begin = time.time()
     if (source == 'all') or (source == 'trace'):
         graph_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
-            view=view, info=kernel_traces, graph=trace_tbd_graph, info_name="trace")
+            view=view, info=kernel_traces, graph=trace_tbd_graph, info_name="trace", path=path)
 
     if (source == 'all') or (source == 'sim'):
         graph_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
-            view=view, info=sim_stats, graph=sim_tbd_graph, info_name="sim")
+            view=view, info=sim_stats, graph=sim_tbd_graph, info_name="sim", path=path)
 
     # Combine the two graphs
     if source == 'all':
@@ -829,7 +829,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', t
 
 
 
-def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_name):
+def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_name, path):
 
     # Grab all needed info from the dependency section of stats/traces
     needed_info = {}
@@ -866,6 +866,8 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
 
                     # In order: add kernel to the current kernel dependency list,
                     # then add the new other kernel info to the structure
+                    if len(path) != 0:
+                        continue
                     if kernel_dependency not in needed_info[kernel_name]["kernels"]:
                         needed_info[kernel_name]["kernels"].append(kernel_dependency)
                     if kernel_dependency not in needed_info:
@@ -920,7 +922,9 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                 # Add/Change thread block nodes
                 for block_depend in needed_info[kernel_name]["dependencies"]:
                     thread_block = block_depend.split('_')[1]
-                    thread_block_match = thread_block in thread_blocks
+                    test_block_name = kernel_name + '_' + thread_block
+                    thread_block_match = ((thread_block in thread_blocks) and (len(path) == 0)) \
+                            or (test_block_name in path)
                     node_color = 'gray' if (kernel_match and thread_block_match) \
                             else 'white'
                     node_width = '3' if (kernel_match and thread_block_match) else '2'
@@ -942,7 +946,9 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                 if (len(needed_info[kernel_name]["dependencies"]) == 0) or \
                         (view == 'thread_block'):
                     for thread_block in needed_info[kernel_name]["thread_blocks"]:
-                        thread_block_match = thread_block in thread_blocks
+                        test_block_name = kernel_name + '_' + thread_block
+                        thread_block_match = ((thread_block in thread_blocks) and \
+                                (len(path) == 0)) or (test_block_name in path)
                         node_color = 'gray' if (kernel_match and thread_block_match) \
                                 else 'white'
                         node_width = '3' if (kernel_match and thread_block_match) \
@@ -965,10 +971,11 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
             # Change oppacities of edges if necessary
             for block_depend in needed_info[kernel_name]["dependencies"]:
                 thread_block = block_depend.split('_')[1]
-                thread_block_match = thread_block in thread_blocks
+                thread_block_match = ((thread_block in thread_blocks) and (len(path) == 0)) \
+                        or (block_depend in path)
 
                 edge_weight = '3' if (kernel_match and thread_block_match) else '1'
-                edge_op = 'ff' if ((len(thread_blocks) == 0) or \
+                edge_op = 'ff' if (((len(thread_blocks) == 0) and len(path) == 0) or \
                         (kernel_match and thread_block_match)) else '06'
 
                 # Draw/Redraw the edges or for the first time
@@ -977,20 +984,21 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                     dependency_id = dependency_info[0] + '_' + dependency_info[1]
                     dependency_type = dependency_info[2]
 
-                    # Blue
-                    if  dependency_type == 'RAW':
-                        edge_color = '#00529a'
-                    # Green
-                    elif dependency_type == 'WAW':
-                        edge_color = '#0f9a00'
-                    # Rurple
-                    elif dependency_type == 'WAR':
-                        edge_color = '#9a0045'
-                    else:
-                        edge_color = '#000000'
+                    if (len(path) == 0) or (dependency_id in path):
+                        # Blue
+                        if  dependency_type == 'RAW':
+                            edge_color = '#00529a'
+                        # Green
+                        elif dependency_type == 'WAW':
+                            edge_color = '#0f9a00'
+                        # Rurple
+                        elif dependency_type == 'WAR':
+                            edge_color = '#9a0045'
+                        else:
+                            edge_color = '#000000'
 
-                    graph.edge(block_depend, dependency_id, color=(edge_color + edge_op), \
-                            penwidth=edge_weight)
+                        graph.edge(block_depend, dependency_id, color=(edge_color + edge_op), \
+                                penwidth=edge_weight)
 
     # For 'kernel' mode
     else:
@@ -1120,8 +1128,6 @@ def get_kernel_estimated_time(depth):
     kernel_time_title = "\n" + ("=" * len(kernel_time_title)) + "\n" + \
             kernel_time_title + "\n" + ("=" * len(kernel_time_title))
     print(kernel_time_title)
-    for kernel in sim_stats:
-        print(kernel + ': ' + str(get_max_kernel_time(sim_stats[kernel])))
 
     kernel_dependencies = get_kernel_dependencies(sim_stats)
     current_kernel = 'kernel-' + str(start_kernel)
@@ -1156,7 +1162,7 @@ def get_kernel_estimated_time(depth):
     return
 
 
-def get_thread_block_estimated_time():
+def get_thread_block_estimated_time(graph=True):
     cta_time_title = "=   " + "Ideal Thread Block Cycle Path and Time" + "   ="
     cta_time_title = "\n" + ("=" * len(cta_time_title)) + "\n" + \
             cta_time_title + "\n" + ("=" * len(cta_time_title))
@@ -1227,17 +1233,23 @@ def get_thread_block_estimated_time():
 
     # Get the actual time
     total_cost = 0
+    kernel_list = []
+    path.remove('Start')
+    path.remove('Finish')
+    print('Start')
     for block in path:
-        if block == 'Start' or block == 'Finish':
-            print(block)
-            continue
         kernel_name = block.split('_')[0]
+        kernel_list.append(int(kernel_name.split('-')[1]))
         thread_block = block.split('_')[1]
         print(kernel_name + ', thread block-' + thread_block)
         total_cost += int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
+    print('Finish')
+
+    # Graph the path
+    if graph:
+        graph_dependencies(kernels=kernel_list, time_report=False, path=path)
 
     print("Total Cycle Time: " + str(total_cost))
-
     return
 
 
