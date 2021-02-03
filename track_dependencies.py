@@ -213,6 +213,9 @@ def main():
     # Print kernel level estimated cycle time
     get_kernel_estimated_time(int(args.depth))
 
+    # Print thread_block level estimated cycle time
+    get_thread_block_estimated_time()
+
     # Output to .json file
     if args.json:
         print("Writing file 'kernel_traces.json...'", end = ' ')
@@ -1154,7 +1157,7 @@ def get_kernel_estimated_time(depth):
 
 
 def get_thread_block_estimated_time():
-    cta_time_title = "=   " + "Ideal Thread Block Cycle Times" + "   ="
+    cta_time_title = "=   " + "Ideal Thread Block Cycle Path and Time" + "   ="
     cta_time_title = "\n" + ("=" * len(cta_time_title)) + "\n" + \
             cta_time_title + "\n" + ("=" * len(cta_time_title))
     print(cta_time_title)
@@ -1164,19 +1167,6 @@ def get_thread_block_estimated_time():
     nx_graph = nx.DiGraph()
     nx_graph.add_node('Start')
     nx_graph.add_node('Finish')
-
-    # For all beginning independent, add edge from start to the beginning thread blocks
-    current_kernel_num = start_kernel
-    current_kernel = 'kernel-' + str(start_kernel)
-    while (current_kernel_num <= end_kernel) and (len(sim_stats[current_kernel]["dependencies"]) == 0):
-        for thread_block in sim_stats[current_kernel]["thread_blocks"]:
-            edge_weight = MIN_OFFSET - int(sim_stats[current_kernel]["thread_blocks"]\
-                    [thread_block]["time"])
-            thread_block_id = current_kernel + '_' + thread_block
-            nx_graph.add_edge('Start', thread_block_id, weight=edge_weight)
-        if int(current_kernel_num <= end_kernel):
-            current_kernel_num += 1
-            current_kernel = 'kernel-' + str(current_kernel_num)
 
     # Add the nodes for all thread blocks
     for kernel_name in sim_stats:
@@ -1196,6 +1186,31 @@ def get_thread_block_estimated_time():
                         [dependency_info[1]]["time"])
                 nx_graph.add_edge(block_depend, dependency_id, weight=edge_weight)
 
+    # Get list of all kernels that are dependent on another one
+    independent_kernels = []
+    for kernel in sim_stats:
+        independent_kernel = True
+        for thread_block in sim_stats[kernel]["thread_blocks"]:
+            block = kernel + '_' + thread_block
+            if len(nx_graph.in_edges(block)) != 0:
+                independent_kernel = False
+        if independent_kernel:
+            independent_kernels.append(kernel)
+
+    # For all beginning independent, add edge from start to the beginning thread blocks
+    current_kernel_num = start_kernel
+    current_kernel = 'kernel-' + str(start_kernel)
+    while (current_kernel_num <= end_kernel) and (current_kernel in independent_kernels):
+        for thread_block in sim_stats[current_kernel]["thread_blocks"]:
+            edge_weight = MIN_OFFSET - int(sim_stats[current_kernel]["thread_blocks"]\
+                    [thread_block]["time"])
+            thread_block_id = current_kernel + '_' + thread_block
+            nx_graph.add_edge('Start', thread_block_id, weight=edge_weight)
+        if int(current_kernel_num <= end_kernel):
+            current_kernel_num += 1
+            current_kernel = 'kernel-' + str(current_kernel_num)
+
+
     # Add edges between final independent kernels to Finish node (weight = 0)
     current_kernel_num = end_kernel
     current_kernel = 'kernel-' + str(end_kernel)
@@ -1207,13 +1222,21 @@ def get_thread_block_estimated_time():
             current_kernel_num -= 1
             current_kernel = 'kernel-' + str(current_kernel_num)
 
-    # TODO Dijkstras
+    # Reverse dijkstras - get path
+    path = nx.dijkstra_path(nx_graph, 'Start', 'Finish')
 
-    # TODO Get path and get the actual time
+    # Get the actual time
+    total_cost = 0
+    for block in path:
+        if block == 'Start' or block == 'Finish':
+            print(block)
+            continue
+        kernel_name = block.split('_')[0]
+        thread_block = block.split('_')[1]
+        print(kernel_name + ', thread block-' + thread_block)
+        total_cost += int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
 
-
-
-
+    print("Total Cycle Time: " + str(total_cost))
 
     return
 
