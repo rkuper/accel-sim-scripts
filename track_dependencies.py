@@ -20,6 +20,7 @@ from subprocess import Popen, PIPE
 import glob
 import pprint
 import json
+import networkx as nx
 from graphviz import Digraph
 
 """""""""
@@ -208,6 +209,9 @@ def main():
 
     # Print kernel names
     # print_kernel_names()
+
+    # Print kernel level estimated cycle time
+    get_kernel_estimated_time(int(args.depth))
 
     # Output to .json file
     if args.json:
@@ -1109,7 +1113,7 @@ def get_max_kernel_time(kernel):
 
 
 def get_kernel_estimated_time(depth):
-    kernel_time_title = "=   " + "Kernel Cycle Times" + "   ="
+    kernel_time_title = "=   " + "Ideal Kernel Cycle Times" + "   ="
     kernel_time_title = "\n" + ("=" * len(kernel_time_title)) + "\n" + \
             kernel_time_title + "\n" + ("=" * len(kernel_time_title))
     print(kernel_time_title)
@@ -1145,11 +1149,53 @@ def get_kernel_estimated_time(depth):
         total_cost += current_cost
         current_kernel = kernel_list[0]
 
-    print("Total cycle time: " + str(total_cost))
+    print("Total Cycle Time: " + str(total_cost))
     return
 
 
 def get_thread_block_estimated_time():
+    cta_time_title = "=   " + "Ideal Thread Block Cycle Times" + "   ="
+    cta_time_title = "\n" + ("=" * len(cta_time_title)) + "\n" + \
+            cta_time_title + "\n" + ("=" * len(cta_time_title))
+    print(cta_time_title)
+    for kernel in sim_stats:
+        print(kernel + ': ' + str(get_max_kernel_time(sim_stats[kernel])))
+
+    # Bootstrap graph info
+    nx_graph = nx.DiGraph()
+    nx_graph.add_node('Start')
+    nx_graph.add_node('Finish')
+
+    # TODO Get list of all kernels that are dependent on another one
+    kernel_dependencies = get_kernel_dependencies(sim_stats)
+    # TODO For all beginning independent, add edge from start to the beginning thread blocks
+
+    for kernel_name in sim_stats:
+        for thread_block in sim_stats[kernel_name]["thread_blocks"]:
+            thread_block_id = kernel_name + '_' + thread_block
+            nx_graph.add_node(thread_block_id)
+
+    for kernel_name in sim_stats:
+        for block_depend in sim_stats[kernel_name]["dependencies"]:
+            for dependency in sim_stats[kernel_name]["dependencies"][block_depend]:
+                dependency_info = dependency.split('_')
+                dependency_id = dependency_info[0] + '_' + dependency_info[1]
+
+                # 10000 to get max instead of min
+                edge_weight = 10000 - int(sim_stats[dependency_info[0]]["thread_blocks"]\
+                        [dependency_info[1]]["time"])
+                nx_graph.add_edge(block_depend, dependency_id, edge_weight)
+
+    # TODO Add edges between final independent kernels to Finish node (weight = 0)
+
+    # TODO Dijkstras
+
+    # TODO Get path and get the actual time
+
+
+
+
+
     return
 
 
