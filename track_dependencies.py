@@ -1162,19 +1162,31 @@ def get_thread_block_estimated_time():
         print(kernel + ': ' + str(get_max_kernel_time(sim_stats[kernel])))
 
     # Bootstrap graph info
+    MIN_OFFSET = 10000
     nx_graph = nx.DiGraph()
     nx_graph.add_node('Start')
     nx_graph.add_node('Finish')
 
-    # TODO Get list of all kernels that are dependent on another one
-    kernel_dependencies = get_kernel_dependencies(sim_stats)
-    # TODO For all beginning independent, add edge from start to the beginning thread blocks
+    # For all beginning independent, add edge from start to the beginning thread blocks
+    current_kernel_num = start_kernel
+    current_kernel = 'kernel-' + start_kernel
+    while (current_kernel_num <= end_kernel) and (len(sim_stats[current_kernel]["dependencies"]) == 0):
+        for thread_block in sim_stats[current_kernel]["thread_blocks"]:
+            edge_weight = MIN_OFFSET - int(sim_stats[current_kernel]["thread_blocks"]\
+                    [thread_block]["time"])
+            thread_block_id = current_kernel + '_' + thread_block
+            nx_graph.add_edge('Start', thread_block_id, edge_weight)
+        if int(current_kernel_num <= end_kernel)
+            current_kernel_num += 1
+            current_kernel = 'kernel-' + str(current_kernel_num)
 
+    # Add the nodes for all thread blocks
     for kernel_name in sim_stats:
         for thread_block in sim_stats[kernel_name]["thread_blocks"]:
             thread_block_id = kernel_name + '_' + thread_block
             nx_graph.add_node(thread_block_id)
 
+    # Add edges with their weights for all thread block dependencies
     for kernel_name in sim_stats:
         for block_depend in sim_stats[kernel_name]["dependencies"]:
             for dependency in sim_stats[kernel_name]["dependencies"][block_depend]:
@@ -1182,11 +1194,21 @@ def get_thread_block_estimated_time():
                 dependency_id = dependency_info[0] + '_' + dependency_info[1]
 
                 # 10000 to get max instead of min
-                edge_weight = 10000 - int(sim_stats[dependency_info[0]]["thread_blocks"]\
+                edge_weight = MIN_OFFSET - int(sim_stats[dependency_info[0]]["thread_blocks"]\
                         [dependency_info[1]]["time"])
                 nx_graph.add_edge(block_depend, dependency_id, edge_weight)
 
-    # TODO Add edges between final independent kernels to Finish node (weight = 0)
+    # Add edges between final independent kernels to Finish node (weight = 0)
+    current_kernel_num = end_kernel
+    current_kernel - 'kernel-' + end_kernel
+    while (current_kernel_num >= start_kernel) and (len(sim_stats[current_kernel]["dependencies"]) == 0):
+        for thread_block in sim_stats[current_kernel]["thread_blocks"]:
+            thread_block_id = current_kernel + '_' + thread_block
+            nx_graph.add_edge(thread_block_id, 'Finish', 0)
+        if int(current_kernel_num >= start_kernel)
+            current_kernel_num -= 1
+            current_kernel = 'kernel-' + str(current_kernel_num)
+
 
     # TODO Dijkstras
 
