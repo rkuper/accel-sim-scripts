@@ -31,6 +31,7 @@ start_kernel = 0
 end_kernel = float('inf')
 trace_tbd_graph = Digraph(comment='Kernel Trace Dependencies')
 sim_tbd_graph = Digraph(comment='Kernel Sim Dependencies')
+CACHE_LINE_SIZE = 0xFFFFFFFFFFFFFF80
 
 
 
@@ -49,6 +50,8 @@ def main():
             "(ex. train_half_8_8_1_lstm)"))
     parser.add_argument("-a", "--sass", help = \
             "Specify the SASS that the traces used (ex. QV100)")
+    parser.add_argument("-c", "--compressed", help = \
+            "Use uncompressed addresses from the traces when parsing", action='store_true')
     parser.add_argument("-s", "--start", help = \
             "Which kernel to start parsing from", default=0)
     parser.add_argument("-e", "--end", help = \
@@ -136,7 +139,7 @@ def main():
         # Manage kernel traces
         parse_trace_begin = time.time()
         parse_trace_files(device_number, cuda_version, args.benchmark, \
-                args.test, args.line_debug)
+                args.test, args.line_debug, args.compressed)
         parse_trace_end = time.time()
 
         # Grab kernel trace dependencies
@@ -204,7 +207,7 @@ def main():
     graph_end = time.time()
 
     # Print kernel names
-    print_kernel_names()
+    # print_kernel_names()
 
     # Output to .json file
     if args.json:
@@ -251,7 +254,7 @@ def main():
 
 
 
-def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
+def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug, compressed):
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
@@ -415,10 +418,20 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
                         # inst = kernel_name + "_0x" + line_fields[0]
                         inst = hex(int(line_fields[0], 16))
 
+                        addresses = []
+
                         # Skip if address is somehow 0
-                        address = int(line_fields[9], 16)
-                        if str(hex(address)) == '0x0' or hex(address) == 0:
-                            continue
+                        if not compressed:
+                            addresses.append(int(line_fields[9], 16))
+                            if str(hex(addresses[0])) == '0x0' or hex(addresses[0]) == 0:
+                                continue
+                        else:
+                            if len(line_fields) < 9:
+                                continue
+                            for field in line_fields:
+                                if '0x' in field:
+                                    addresses.append(int(field, 16))
+
 
                         # New instruction info
                         if inst not in kernel_traces[kernel_name]["thread_blocks"]\
@@ -458,30 +471,31 @@ def parse_trace_files(device_number, cuda_version, benchmark, test, line_debug):
                         #         ["warps"][current_warp]["mem_insts"][inst]\
                         #         ["mask"].append(hex(int(line_fields[1], 16)))
 
-                        # Add address info
-                        kernel_traces[kernel_name]["thread_blocks"][current_block]\
-                                ["warps"][current_warp]["mem_insts"][inst]\
-                                ["addr"].append(hex(address))
-                        line_address = address & 0xFFFFFFFFFF80
-                        if hex(line_address) not in kernel_traces[kernel_name]["thread_blocks"]\
-                                [current_block]["warps"][current_warp]["mem_insts"][inst]\
-                                ["line_addr"]:
+                        for address in addresses:
+                            # Add address info
                             kernel_traces[kernel_name]["thread_blocks"][current_block]\
                                     ["warps"][current_warp]["mem_insts"][inst]\
-                                    ["line_addr"].append(hex(line_address))
+                                    ["addr"].append(hex(address))
+                            line_address = address & CACHE_LINE_SIZE
+                            if hex(line_address) not in kernel_traces[kernel_name]["thread_blocks"]\
+                                    [current_block]["warps"][current_warp]["mem_insts"][inst]\
+                                    ["line_addr"]:
+                                kernel_traces[kernel_name]["thread_blocks"][current_block]\
+                                        ["warps"][current_warp]["mem_insts"][inst]\
+                                        ["line_addr"].append(hex(line_address))
 
-                        type_address = hex(line_address | 0x1) if (mem_type == 'load')\
-                                else hex(line_address | 0x2)
-                        if type_address not in kernel_traces[kernel_name]["thread_blocks"]\
-                                [current_block]["warps"][current_warp]["mem_addrs"]:
-                            kernel_traces[kernel_name]["thread_blocks"][current_block]\
-                                    ["warps"][current_warp]["mem_addrs"].append(type_address)
-                        if type_address not in kernel_traces[kernel_name]["thread_blocks"]\
-                                [current_block]["mem_addrs"]:
-                            kernel_traces[kernel_name]["thread_blocks"][current_block]\
-                                    ["mem_addrs"].append(type_address)
-                        if type_address not in kernel_traces[kernel_name]["mem_addrs"]:
-                            kernel_traces[kernel_name]["mem_addrs"].append(type_address)
+                            type_address = hex(line_address | 0x1) if (mem_type == 'load')\
+                                    else hex(line_address | 0x2)
+                            if type_address not in kernel_traces[kernel_name]["thread_blocks"]\
+                                    [current_block]["warps"][current_warp]["mem_addrs"]:
+                                kernel_traces[kernel_name]["thread_blocks"][current_block]\
+                                        ["warps"][current_warp]["mem_addrs"].append(type_address)
+                            if type_address not in kernel_traces[kernel_name]["thread_blocks"]\
+                                    [current_block]["mem_addrs"]:
+                                kernel_traces[kernel_name]["thread_blocks"][current_block]\
+                                        ["mem_addrs"].append(type_address)
+                            if type_address not in kernel_traces[kernel_name]["mem_addrs"]:
+                                kernel_traces[kernel_name]["mem_addrs"].append(type_address)
 
                         # Increment instruction counts
                         kernel_traces[kernel_name]["thread_blocks"][current_block]\
@@ -552,7 +566,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
             # Gather kernel info
             if "kernel id =" in line:
                 kernel_id = int(line.split(' ')[-1])
-                if (kernel_id < start_kernel) or (kernel_id > end_kernel):
+                if (kernel_id < start_kernel) or (kernel_id > (end_kernel - 1)):
                     skipping_kernel = True
                     continue
                 else:
@@ -679,7 +693,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
 
                 # Add the address and set to hex
                 address = int(line_fields[5].split('=')[1].replace(',', ''), 16)
-                line_address = address & 0xFFFFFFFFFF80
+                line_address = address & CACHE_LINE_SIZE
                 sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
                         [warp]["mem_insts"][inst]["addr"].append(hex(address))
                 if hex(line_address) not in sim_stats[kernel_name]["thread_blocks"]\
@@ -733,7 +747,7 @@ def find_dependencies(kernel_name, depth, info):
         for current_address in info[kernel_name]["thread_blocks"]\
                 [current_block]["mem_addrs"]:
 
-            cur_line_check = int(current_address, 16) & 0xFFFFFFFFFF80
+            cur_line_check = int(current_address, 16) & CACHE_LINE_SIZE
             before_type = 'R' if (int(current_address, 16) & 0x1) else 'W'
 
             # Covers all subsequent kernels - takes FOREVER
@@ -1216,6 +1230,18 @@ def print_dependencies_helper(kernels=[], thread_blocks=[], info=kernel_traces, 
     pprint.pprint(needed_info)
     return
 
+def print_same_dependencies():
+    errors = 0
+    error_list = []
+    for kernel_name in kernel_traces:
+        for block_depend in kernel_traces[kernel_name]["dependencies"]:
+            if (kernel_traces[kernel_name]["dependencies"][block_depend] != \
+                    sim_stats[kernel_name]["dependencies"][block_depend]):
+                errors += 1
+                error_list.append(block_depend)
+    print(errors)
+    pprint.pprint(error_list)
+    return
 
 def print_kernel_names():
     kernel_names_title = "=   Kernel Names   ="
