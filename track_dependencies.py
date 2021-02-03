@@ -1095,21 +1095,61 @@ def get_kernel_dependencies(info=sim_stats):
         for block_dependency in info[kernel_name]["dependencies"]:
             for dependency in info[kernel_name]["dependencies"][block_dependency]:
                 dependent_kernel = int((dependency.split("-")[1]).split("_")[0])
-                kernel_dependencies[kernel_num].append(dependent_kernel)
+                if dependent_kernel not in kernel_dependencies[kernel_num]:
+                    kernel_dependencies[kernel_num].append(dependent_kernel)
     return kernel_dependencies
 
 
-def get_max_kernel_time():
+def get_max_kernel_time(kernel):
+    max_cost = 0
+    for thread_block in kernel["thread_blocks"]:
+        time = int(kernel["thread_blocks"][thread_block]["time"])
+        max_cost = time if (time > max_cost) else max_cost
+    return max_cost
+
+
+def get_kernel_estimated_time(depth):
+    kernel_time_title = "=   " + "Kernel Cycle Times" + "   ="
+    kernel_time_title = "\n" + ("=" * len(kernel_time_title)) + "\n" + \
+            kernel_time_title + "\n" + ("=" * len(kernel_time_title))
+    print(kernel_time_title)
+    for kernel in sim_stats:
+        print(kernel + ': ' + str(get_max_kernel_time(sim_stats[kernel])))
+
+    kernel_dependencies = get_kernel_dependencies(sim_stats)
+    current_kernel = 'kernel-' + str(start_kernel)
+    current_cost = 0
+    total_cost = 0
+
+    kernel_list = []
+    for kernel in range(start_kernel, end_kernel + 1):
+        kernel_list.append('kernel-' + str(kernel))
+
+    while current_kernel != ('kernel-' + str(end_kernel)):
+        current_kernel_num = int(current_kernel.split('-')[1])
+        current_cost = get_max_kernel_time(sim_stats[current_kernel])
+        kernel_list.remove(current_kernel)
+        for test_kernel in range(1, depth + 1):
+            test_kernel_name = 'kernel-' + str(int(current_kernel.split('-')[1]) + test_kernel)
+            if test_kernel_name not in kernel_list:
+                continue
+
+            if (current_kernel_num + test_kernel) not in kernel_dependencies[current_kernel_num]:
+                if (int(current_kernel.split('-')[1]) + test_kernel) < end_kernel:
+                    kernel_list.remove(test_kernel_name)
+                test_cost = get_max_kernel_time(sim_stats[test_kernel_name])
+                current_cost = test_cost if (test_cost > current_cost) else current_cost
+            else:
+                break
+
+        total_cost += current_cost
+        current_kernel = kernel_list[0]
+
+    print("Total cycle time: " + str(total_cost))
     return
 
 
-def get_estimated_time():
-    kernel_dependencies = get_kernel_dependencies()
-    starting_kernel_name = 'kernel-' + str(start_kernel)
-    current_kernel = starting_kernel_name
-    cost = 0
-    cost += max(sim_stats[current_kernel]["thread_blocks"], key=lambda x: x["time"])
-    print(str(cost))
+def get_thread_block_estimated_time():
     return
 
 
