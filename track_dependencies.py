@@ -866,8 +866,6 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
 
                     # In order: add kernel to the current kernel dependency list,
                     # then add the new other kernel info to the structure
-                    if len(path) != 0:
-                        continue
                     if kernel_dependency not in needed_info[kernel_name]["kernels"]:
                         needed_info[kernel_name]["kernels"].append(kernel_dependency)
                     if kernel_dependency not in needed_info:
@@ -974,31 +972,33 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                 thread_block_match = ((thread_block in thread_blocks) and (len(path) == 0)) \
                         or (block_depend in path)
 
-                edge_weight = '3' if (kernel_match and thread_block_match) else '1'
-                edge_op = 'ff' if (((len(thread_blocks) == 0) and len(path) == 0) or \
-                        (kernel_match and thread_block_match)) else '06'
-
                 # Draw/Redraw the edges or for the first time
                 for dependency in needed_info[kernel_name]["dependencies"][block_depend]:
                     dependency_info = dependency.split('_')
                     dependency_id = dependency_info[0] + '_' + dependency_info[1]
                     dependency_type = dependency_info[2]
 
-                    if (len(path) == 0) or (dependency_id in path):
-                        # Blue
-                        if  dependency_type == 'RAW':
-                            edge_color = '#00529a'
-                        # Green
-                        elif dependency_type == 'WAW':
-                            edge_color = '#0f9a00'
-                        # Rurple
-                        elif dependency_type == 'WAR':
-                            edge_color = '#9a0045'
-                        else:
-                            edge_color = '#000000'
+                    # Get graph colors and weights
+                    edge_match = thread_block_match and (dependency_id in path)
+                    edge_checks = ((len(thread_blocks) == 0) and len(path) == 0) or \
+                            (edge_match)
+                    edge_op = 'ff' if edge_checks else '0b'
+                    edge_weight = '3' if (kernel_match and edge_match) else '1'
 
-                        graph.edge(block_depend, dependency_id, color=(edge_color + edge_op), \
-                                penwidth=edge_weight)
+                    # Blue
+                    if  dependency_type == 'RAW':
+                        edge_color = '#00529a'
+                    # Green
+                    elif dependency_type == 'WAW':
+                        edge_color = '#0f9a00'
+                    # Rurple
+                    elif dependency_type == 'WAR':
+                        edge_color = '#9a0045'
+                    else:
+                        edge_color = '#000000'
+
+                    graph.edge(block_depend, dependency_id, color=(edge_color + edge_op), \
+                            penwidth=edge_weight)
 
     # For 'kernel' mode
     else:
@@ -1247,7 +1247,7 @@ def get_thread_block_estimated_time(graph=True):
 
     # Graph the path
     if graph:
-        graph_dependencies(kernels=kernel_list, time_report=False, path=path)
+        graph_dependencies(time_report=False, path=path)
 
     print("Total Cycle Time: " + str(total_cost))
     return
