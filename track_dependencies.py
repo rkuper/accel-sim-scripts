@@ -1188,8 +1188,14 @@ def get_thread_block_estimated_time(graph=True):
                 dependency_id = dependency_info[0] + '_' + dependency_info[1]
 
                 # 10000 to get max instead of min
-                edge_weight = MIN_OFFSET - int(sim_stats[dependency_info[0]]["thread_blocks"]\
-                        [dependency_info[1]]["time"])
+                edge_weight = int(sim_stats[dependency_info[0]]\
+                        ["thread_blocks"][dependency_info[1]]["time"])
+                latter_start = int(sim_stats[dependency_info[0]]\
+                        ["thread_blocks"][dependency_info[1]]["start_time"])
+                former_end = int(sim_stats[block_depend.split('_')[0]]\
+                        ["thread_blocks"][block_depend.split('_')[1]]["end_time"])
+                overhead_cost = latter_start - former_end
+                edge_weight = MIN_OFFSET - (edge_weight + overhead_cost)
                 nx_graph.add_edge(block_depend, dependency_id, weight=edge_weight)
 
     # Get list of all kernels that are dependent on another one
@@ -1220,7 +1226,8 @@ def get_thread_block_estimated_time(graph=True):
     # Add edges between final independent kernels to Finish node (weight = 0)
     current_kernel_num = end_kernel
     current_kernel = 'kernel-' + str(end_kernel)
-    while (current_kernel_num >= start_kernel) and (len(sim_stats[current_kernel]["dependencies"]) == 0):
+    while (current_kernel_num >= start_kernel) and \
+            (len(sim_stats[current_kernel]["dependencies"]) == 0):
         for thread_block in sim_stats[current_kernel]["thread_blocks"]:
             thread_block_id = current_kernel + '_' + thread_block
             nx_graph.add_edge(thread_block_id, 'Finish', weight=0)
@@ -1237,11 +1244,21 @@ def get_thread_block_estimated_time(graph=True):
     path.remove('Start')
     path.remove('Finish')
     print('Start')
-    for block in path:
+    for block_index in range(len(path)):
+        block = path[block_index]
         kernel_name = block.split('_')[0]
         kernel_list.append(int(kernel_name.split('-')[1]))
         thread_block = block.split('_')[1]
         print(kernel_name + ', thread block-' + thread_block)
+        edge_cost = int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
+        if (block_index + 1) != len(path):
+            former_end = int(sim_stats[kernel_name]["thread_blocks"][thread_block]["end_time"])
+            latter_block = path[block_index + 1]
+            latter_thread_block = (path[block_index + 1]).split('_')[1]
+            latter_kernel_name = (path[block_index + 1]).split('_')[0]
+            latter_start = int(sim_stats[latter_kernel_name]["thread_blocks"]\
+                    [latter_thread_block]["start_time"])
+            edge_cost += (latter_start - former_end)
         total_cost += int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
     print('Finish')
 
