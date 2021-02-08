@@ -1115,10 +1115,15 @@ def get_kernel_dependencies(info=sim_stats):
     return kernel_dependencies
 
 
-def get_max_kernel_time(kernel):
+def get_max_kernel_time(kernel, early_offset):
+
+    # Get the max cost overall
     max_cost = 0
     for thread_block in kernel["thread_blocks"]:
         time = int(kernel["thread_blocks"][thread_block]["time"])
+        current_offset = int(kernel["thread_blocks"][thread_block]["start_time"])
+        time_offset = current_offset - early_offset
+        time += time_offset
         max_cost = time if (time > max_cost) else max_cost
     return max_cost
 
@@ -1138,19 +1143,29 @@ def get_kernel_estimated_time(depth):
     for kernel in range(start_kernel, end_kernel + 1):
         kernel_list.append('kernel-' + str(kernel))
 
+    time_offset = float('inf')
     while current_kernel != ('kernel-' + str(end_kernel)):
+
+        # Get earliest start time for kernel
+        for thread_block in sim_stats[current_kernel]["thread_blocks"]:
+            start_time = int(sim_stats[current_kernel]["thread_blocks"][thread_block]["start_time"])
+            time_offset = start_time if (start_time < time_offset) else time_offset
+
         current_kernel_num = int(current_kernel.split('-')[1])
-        current_cost = get_max_kernel_time(sim_stats[current_kernel])
+        current_cost = get_max_kernel_time(sim_stats[current_kernel], time_offset)
         kernel_list.remove(current_kernel)
+
+        # Check future kernels (in depth) for independent times
         for test_kernel in range(1, depth + 1):
             test_kernel_name = 'kernel-' + str(int(current_kernel.split('-')[1]) + test_kernel)
             if test_kernel_name not in kernel_list:
                 continue
 
+            # Check for independent kernels for max cycle count (horizontally in graph)
             if (current_kernel_num + test_kernel) not in kernel_dependencies[current_kernel_num]:
                 if (int(current_kernel.split('-')[1]) + test_kernel) < end_kernel:
                     kernel_list.remove(test_kernel_name)
-                test_cost = get_max_kernel_time(sim_stats[test_kernel_name])
+                test_cost = get_max_kernel_time(sim_stats[test_kernel_name], time_offset)
                 current_cost = test_cost if (test_cost > current_cost) else current_cost
             else:
                 break
