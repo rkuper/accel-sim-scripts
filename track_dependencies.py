@@ -117,7 +117,7 @@ def main():
         end_kernel = float('inf')
 
     # KERNEL TRACES for next ~30 lines
-    # If data exists and want to use, skip getting it again
+    If data exists and want to use, skip getting it again
     if args.open and os.path.isfile('kernel_traces.json'):
         kernel_trace_title = "=   Getting Kernel Traces From kernel_traces.json  ="
         kernel_trace_title = ("=" * len(kernel_trace_title)) + "\n"  + \
@@ -137,13 +137,13 @@ def main():
         print("Using kernels " + str(start_kernel) + "-" + str(end_kernel))
 
     else:
-        # Manage kernel traces
+        Manage kernel traces
         parse_trace_begin = time.time()
         parse_trace_files(device_number, cuda_version, args.benchmark, \
                 args.test, args.line_debug, args.compressed)
         parse_trace_end = time.time()
 
-        # Grab kernel trace dependencies
+        Grab kernel trace dependencies
         print('Grabbing dependencies...', end = ' ')
         sys.stdout.flush()
         trace_dependencies_begin = time.time()
@@ -560,6 +560,8 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                 "accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>/<SASS>/<LOG>")
         return
 
+    global end_kernel
+
     # Begin parsing the sim output
     # Get kernel info
     temp_kernel_name = ""
@@ -568,6 +570,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
     began_print = False
     skipping_kernel = False
     temp_thread_block = ""
+    temp_end_kernel = 0
     with open(sim_file, 'r', encoding = 'utf-8') as sim_file:
         for line in sim_file:
             # Gather kernel info
@@ -579,6 +582,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                 else:
                     skipping_kernel = False
 
+                temp_end_kernel = kernel_id
                 if kernel_name != "kernel-":
                     print('Done')
                 kernel_name = "kernel-" + str(kernel_id)
@@ -733,13 +737,16 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
         # Print that the sim trace for ending kernel is done
         if began_print:
             print('Done')
+
+    if (end_kernel == float('inf')) or (end_kernel > temp_end_kernel):
+        end_kernel = temp_end_kernel
     return
 
 
 
 # def find_dependencies(depth, kernel_name, dependencies):
 def find_dependencies(kernel_name, depth, info):
-    if start_kernel == end_kernel:
+    if (start_kernel == end_kernel): #or (kernel_name == ('kernel-' + str(end_kernel))):
         return
 
     dependencies = {}
