@@ -12,6 +12,7 @@ import os
 import sys
 import time
 import string
+from collections import deque
 import multiprocessing as mp
 from functools import partial
 import argparse
@@ -73,16 +74,20 @@ def main():
 
     # Set timing variables
     total_begin = time.time()
-    parse_trace_begin = 0
-    parse_trace_end = 0
-    trace_dependencies_begin = 0
-    trace_dependencies_end = 0
+    # parse_trace_begin = 0
+    # parse_trace_end = 0
+    # trace_dependencies_begin = 0
+    # trace_dependencies_end = 0
     parse_sim_begin = 0
     parse_sim_end = 0
     sim_dependencies_begin = 0
     sim_dependencies_end = 0
     graph_begin = 0
     graph_end = 0
+    ideal_kernel_begin = 0
+    ideal_kernel_end = 0
+    ideal_thread_block_begin = 0
+    ideal_thread_block_end = 0
 
     # Get the GPU device number
     lspci = Popen("lspci", stdout=PIPE)
@@ -117,47 +122,47 @@ def main():
         end_kernel = float('inf')
 
     # KERNEL TRACES for next ~30 lines
-    If data exists and want to use, skip getting it again
-    if args.open and os.path.isfile('kernel_traces.json'):
-        kernel_trace_title = "=   Getting Kernel Traces From kernel_traces.json  ="
-        kernel_trace_title = ("=" * len(kernel_trace_title)) + "\n"  + \
-                kernel_trace_title + "\n" + ("=" * len(kernel_trace_title))
-        print(kernel_trace_title)
-        parse_trace_begin = time.time()
-        trace_dependencies_begin = time.time()
-        global kernel_traces
-        print("Gathering kernel_traces.json data...", end = ' ')
-        kernel_traces = json.load(open('kernel_traces.json', 'r'))
-        print("Done")
-        kernels = sorted(kernel_traces.keys())
-        start_kernel = int(kernels[0].split('-')[1])
-        end_kernel = int(kernels[-1].split('-')[1])
-        trace_dependencies_end = time.time()
-        parse_trace_end = time.time()
-        print("Using kernels " + str(start_kernel) + "-" + str(end_kernel))
+    # If data exists and want to use, skip getting it again
+    # if args.open and os.path.isfile('kernel_traces.json'):
+    #     kernel_trace_title = "=   Getting Kernel Traces From kernel_traces.json  ="
+    #     kernel_trace_title = ("=" * len(kernel_trace_title)) + "\n"  + \
+    #             kernel_trace_title + "\n" + ("=" * len(kernel_trace_title))
+    #     print(kernel_trace_title)
+    #     parse_trace_begin = time.time()
+    #     trace_dependencies_begin = time.time()
+    #     global kernel_traces
+    #     print("Gathering kernel_traces.json data...", end = ' ')
+    #     kernel_traces = json.load(open('kernel_traces.json', 'r'))
+    #     print("Done")
+    #     kernels = sorted(kernel_traces.keys())
+    #     start_kernel = int(kernels[0].split('-')[1])
+    #     end_kernel = int(kernels[-1].split('-')[1])
+    #     trace_dependencies_end = time.time()
+    #     parse_trace_end = time.time()
+    #     print("Using kernels " + str(start_kernel) + "-" + str(end_kernel))
 
-    else:
-        Manage kernel traces
-        parse_trace_begin = time.time()
-        parse_trace_files(device_number, cuda_version, args.benchmark, \
-                args.test, args.line_debug, args.compressed)
-        parse_trace_end = time.time()
+    # else:
+        # Manage kernel traces
+        # parse_trace_begin = time.time()
+        # parse_trace_files(device_number, cuda_version, args.benchmark, \
+        #         args.test, args.line_debug, args.compressed)
+        # parse_trace_end = time.time()
 
-        Grab kernel trace dependencies
-        print('Grabbing dependencies...', end = ' ')
-        sys.stdout.flush()
-        trace_dependencies_begin = time.time()
-        pool = mp.Pool(mp.cpu_count())
-        specific_dependencies = partial(find_dependencies, depth=depth, \
-                info=kernel_traces)
-        all_kernel_dependencies = pool.map(specific_dependencies, \
-                kernel_traces.keys())
-        for kernel_dependencies in all_kernel_dependencies:
-            kernel_name = list(kernel_dependencies.keys())[0]
-            kernel_traces[kernel_name]["dependencies"] = \
-                    kernel_dependencies[kernel_name]
-        trace_dependencies_end = time.time()
-        print('Done')
+        # Grab kernel trace dependencies
+        # print('Grabbing dependencies...', end = ' ')
+        # sys.stdout.flush()
+        # trace_dependencies_begin = time.time()
+        # pool = mp.Pool(mp.cpu_count())
+        # specific_dependencies = partial(find_dependencies, depth=depth, \
+        #         info=kernel_traces)
+        # all_kernel_dependencies = pool.map(specific_dependencies, \
+        #         kernel_traces.keys())
+        # for kernel_dependencies in all_kernel_dependencies:
+        #     kernel_name = list(kernel_dependencies.keys())[0]
+        #     kernel_traces[kernel_name]["dependencies"] = \
+        #             kernel_dependencies[kernel_name]
+        # trace_dependencies_end = time.time()
+        # print('Done')
 
     # SIM STATS in next ~30 lines
     # If data exists and want to use, skip getting it again
@@ -202,6 +207,18 @@ def main():
         sim_dependencies_end = time.time()
         print('Done')
 
+    # Output to .json file
+    if args.json:
+        # print("Writing file 'kernel_traces.json...'", end = ' ')
+        # with open('kernel_traces.json','w') as fp:
+        #     json.dump(kernel_traces, fp)
+        # print("Done")
+
+        print("Writing file 'sim_stats.json...'", end = ' ')
+        with open('sim_stats.json','w') as fp:
+            json.dump(sim_stats, fp)
+        print("Done")
+
     # Manage trace stats
     graph_begin = time.time()
     print_dependency_stats(args.graph)
@@ -211,22 +228,14 @@ def main():
     # print_kernel_names()
 
     # Print kernel level estimated cycle time
+    ideal_kernel_begin = time.time()
     get_kernel_estimated_time(int(args.depth))
+    ideal_kernel_end = time.time()
 
     # Print thread_block level estimated cycle time
-    get_thread_block_estimated_time(False)
-
-    # Output to .json file
-    if args.json:
-        print("Writing file 'kernel_traces.json...'", end = ' ')
-        with open('kernel_traces.json','w') as fp:
-            json.dump(kernel_traces, fp)
-        print("Done")
-
-        print("Writing file 'sim_stats.json...'", end = ' ')
-        with open('sim_stats.json','w') as fp:
-            json.dump(sim_stats, fp)
-        print("Done")
+    ideal_thread_block_begin = time.time()
+    get_thread_block_estimated_time()
+    ideal_thread_block_end = time.time()
 
     # Timing information
     print('')
@@ -234,14 +243,16 @@ def main():
     timing_title = ("=" * len(timing_title)) + "\n"  + \
         timing_title + "\n" + ("=" * len(timing_title))
     print(timing_title)
-    print("Parse Trace Files Time: " + str(parse_trace_end - parse_trace_begin))
-    print("Get Trace Dependencies Time: " + str(trace_dependencies_end - \
-            trace_dependencies_begin))
+    # print("Parse Trace Files Time: " + str(parse_trace_end - parse_trace_begin))
+    # print("Get Trace Dependencies Time: " + str(trace_dependencies_end - \
+    #         trace_dependencies_begin))
     print("Parse Simulation Output Time: " + str(parse_sim_end - parse_sim_begin))
     print("Get Simulation Dependencies Time: " + str(sim_dependencies_end - \
             sim_dependencies_begin))
     if args.graph:
         print("Graph Time: " + str(graph_end - graph_begin))
+    print("Ideal Kernel Estimate Time: " + str(ideal_kernel_end - ideal_kernel_begin))
+    print("Ideal Thread Block Estimate Time: " + str(ideal_thread_block_end - ideal_thread_block_begin))
     print('---------------------------------')
     print("Total Runtime: " + str((time.time() - total_begin)) + "s\n")
 
@@ -807,7 +818,7 @@ def find_dependencies(kernel_name, depth, info):
 
 """""""""""""""
 
-def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', time_report=True, path=[]):
+def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='sim', time_report=True, path=[]):
     graph_begin = time.time()
     if (source == 'all') or (source == 'trace'):
         graph_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
@@ -972,6 +983,18 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                         current_kernel.node(thread_block_id, thread_block_label, \
                                 style="rounded,filled", color="black", \
                                 fillcolor=node_color, penwidth=node_width)
+
+                # FIXME remove later
+                for thread_block in info[kernel_name]["thread_blocks"]:
+                    if kernel_name == 'kernel-34' or kernel_name == 'kernel-31':
+                        break
+                    thread_block_id = kernel_name + '_' + thread_block
+                    time = info[kernel_name]["thread_blocks"][thread_block]["time"]
+                    thread_block_label = ('<' + thread_block + '<br/>' + time + '>')
+                    current_kernel.node(thread_block_id, thread_block_label, \
+                            style="rounded,filled", color="black", \
+                            fillcolor='white', penwidth='3')
+
 
             # Change oppacities of edges if necessary
             for block_depend in needed_info[kernel_name]["dependencies"]:
@@ -1184,7 +1207,7 @@ def get_kernel_estimated_time(depth):
     return
 
 
-def get_thread_block_estimated_time(graph=True):
+def get_broken_thread_block_estimated_time(graph=True):
     cta_time_title = "=   " + "Ideal Thread Block Cycle Path and Time" + "   ="
     cta_time_title = "\n" + ("=" * len(cta_time_title)) + "\n" + \
             cta_time_title + "\n" + ("=" * len(cta_time_title))
@@ -1293,41 +1316,108 @@ def get_thread_block_estimated_time(graph=True):
 
 
 
+def get_thread_block_estimated_time(graph=True):
+    cta_time_title = "=   " + "Ideal Thread Block Cycle Path and Time" + "   ="
+    cta_time_title = "\n" + ("=" * len(cta_time_title)) + "\n" + \
+            cta_time_title + "\n" + ("=" * len(cta_time_title))
+    print(cta_time_title)
+
+    # Bootstrap graph info
+    nx_graph = nx.DiGraph()
+
+    # Add the nodes for all thread blocks
+    for kernel_name in sim_stats:
+        for thread_block in sim_stats[kernel_name]["thread_blocks"]:
+            thread_block_id = kernel_name + '_' + thread_block
+            nx_graph.add_node(thread_block_id)
+
+    # Add edges with their weights for all thread block dependencies
+    for kernel_name in sim_stats:
+        for block_depend in sim_stats[kernel_name]["dependencies"]:
+            for dependency in sim_stats[kernel_name]["dependencies"][block_depend]:
+                dependency_info = dependency.split('_')
+                dependency_id = dependency_info[0] + '_' + dependency_info[1]
+                edge_weight = int(sim_stats[dependency_info[0]]\
+                        ["thread_blocks"][dependency_info[1]]["time"])
+                latter_start = int(sim_stats[dependency_info[0]]\
+                        ["thread_blocks"][dependency_info[1]]["start_time"])
+                former_end = int(sim_stats[block_depend.split('_')[0]]\
+                        ["thread_blocks"][block_depend.split('_')[1]]["end_time"])
+                nx_graph.add_edge(block_depend, dependency_id, weight=edge_weight)
+
+    # Set start and finish attachments to each node that needs it
+    nx_graph.add_node('Start')
+    nx_graph.add_node('Finish')
+    for block in list(nx_graph.nodes()):
+        if (block == 'Start') or (block == 'Finish'):
+            continue
+        if nx_graph.in_degree(block) == 0:
+            kernel = block.split('_')[0]
+            thread_block = block.split('_')[1]
+            edge_weight = int(sim_stats[kernel]["thread_blocks"][thread_block]["time"])
+            nx_graph.add_edge('Start', block, weight=edge_weight)
+        if nx_graph.out_degree(block) == 0:
+            kernel = block.split('_')[0]
+            thread_block = block.split('_')[1]
+            edge_weight = int(sim_stats[kernel]["thread_blocks"][thread_block]["time"])
+            nx_graph.add_edge(block, 'Finish', weight=0)
+
+    # Go through each thread block and find longest path
+    best_found = [[], 0]
+    thread_block_queue = deque()
+    thread_block_queue.append([['Start'], 0])
+    while (len(thread_block_queue) != 0):
+        current_path = thread_block_queue.popleft()
+        if (current_path[0][-1] == 'Finish'):
+            if (current_path[1] > best_found[1]):
+                best_found = [current_path[0].copy(), current_path[1]]
+        for dependent_thread_block in nx_graph.neighbors(current_path[0][-1]):
+            next_path = [current_path[0].copy(), current_path[1]]
+            next_path[0].append(dependent_thread_block)
+            next_path[1] = current_path[1] + nx_graph.get_edge_data(next_path[0][-2], next_path[0][-1],
+                    default=0)['weight']
+            thread_block_queue.append(next_path)
+    path = best_found[0]
+
+    # Get the actual time
+    total_cost = 0
+    kernel_list = []
+    path.remove('Start')
+    path.remove('Finish')
+    print('Start')
+    for block_index in range(len(path)):
+        block = path[block_index]
+        kernel_name = block.split('_')[0]
+        kernel_list.append(int(kernel_name.split('-')[1]))
+        thread_block = block.split('_')[1]
+        print(kernel_name + ', thread block-' + thread_block)
+        edge_cost = int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
+        if (block_index + 1) != len(path):
+            former_end = int(sim_stats[kernel_name]["thread_blocks"][thread_block]["end_time"])
+            latter_block = path[block_index + 1]
+            latter_thread_block = (path[block_index + 1]).split('_')[1]
+            latter_kernel_name = (path[block_index + 1]).split('_')[0]
+            latter_start = int(sim_stats[latter_kernel_name]["thread_blocks"]\
+                    [latter_thread_block]["start_time"])
+        total_cost += int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
+    print('Finish')
+
+    # Graph the path
+    if graph:
+        graph_dependencies(time_report=False, path=path)
+
+    print("Total Cycle Time: " + str(total_cost))
+    return
+
+
+
+
+
 """""""""""""""
 
  Printing Info
 
 """""""""""""""
-
-def print_inst(kernel=start_kernel, thread_blocks=[], inst=[]):
-
-    print_inst_helper(kernel=kernel, thread_blocks=thread_blocks, inst=inst, \
-            info=kernel_traces, info_name='trace')
-    print_inst_helper(kernel=kernel, thread_blocks=thread_blocks, inst=inst, \
-            info=sim_stats, info_name='sim')
-    return
-
-def print_inst_helper(kernel=start_kernel, thread_blocks=[], inst=[], \
-        info=kernel_traces, info_name='trace'):
-    kernel_name = "kernel-" + str(kernel)
-
-    info_title = "Kernel Trace" if (info_name == 'trace') else "Simulation Output"
-    kernel_inst_title = "=   " + info_title + " for CTA(s): " + str(thread_blocks) + \
-            " and PC: " + str(inst) + "   ="
-    kernel_inst_title = "\n" + ("=" * len(kernel_inst_title)) + "\n" + \
-            kernel_inst_title + "\n" + ("=" * len(kernel_inst_title))
-    print(kernel_inst_title)
-
-    for thread_block in info[kernel_name]["thread_blocks"]:
-        if (len(thread_blocks) == 0) or (thread_block in thread_blocks):
-            for warp in info[kernel_name]["thread_blocks"][thread_block]["warps"]:
-                for mem_inst in info[kernel_name]["thread_blocks"][thread_block]\
-                        ["warps"][warp]["mem_insts"]:
-                    if (len(inst) == 0) or (mem_inst in inst):
-                        pprint.pprint(info[kernel_name]["thread_blocks"]\
-                            [thread_block]["warps"][warp]["mem_insts"][mem_inst])
-    return
-
 
 def print_addr_counts():
     address_counts = {}
@@ -1356,11 +1446,11 @@ def print_dependency_stats(graph):
         graph_dependencies(time_report=False)
 
     # Kernel trace info
-    for kernel in range(start_kernel, end_kernel + 1):
-        kernel_name = 'kernel-' + str(kernel)
-        print("Dependent trace thread_blocks in " + kernel_name + ":", end = ' ')
-        print(str(len(kernel_traces[kernel_name]["dependencies"])), end = '')
-        print("/" + str(len(kernel_traces[kernel_name]["thread_blocks"])))
+    # for kernel in range(start_kernel, end_kernel + 1):
+    #     kernel_name = 'kernel-' + str(kernel)
+    #     print("Dependent trace thread_blocks in " + kernel_name + ":", end = ' ')
+    #     print(str(len(kernel_traces[kernel_name]["dependencies"])), end = '')
+    #     print("/" + str(len(kernel_traces[kernel_name]["thread_blocks"])))
 
     # Sim stat info
     for kernel in range(start_kernel, end_kernel + 1):
@@ -1371,7 +1461,7 @@ def print_dependency_stats(graph):
     return
 
 
-def print_dependencies(kernels=[], thread_blocks=[], info='all'):
+def print_dependencies(kernels=[], thread_blocks=[], info='sim'):
     if (info == 'all') or (info == 'trace'):
         print_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
                 info=kernel_traces, info_name='trace')
@@ -1407,19 +1497,6 @@ def print_dependencies_helper(kernels=[], thread_blocks=[], info=kernel_traces, 
                             info[kernel]['dependencies'][block_name].copy()
 
     pprint.pprint(needed_info)
-    return
-
-def print_same_dependencies():
-    errors = 0
-    error_list = []
-    for kernel_name in kernel_traces:
-        for block_depend in kernel_traces[kernel_name]["dependencies"]:
-            if (kernel_traces[kernel_name]["dependencies"][block_depend] != \
-                    sim_stats[kernel_name]["dependencies"][block_depend]):
-                errors += 1
-                error_list.append(block_depend)
-    print(errors)
-    pprint.pprint(error_list)
     return
 
 def print_kernel_names():
