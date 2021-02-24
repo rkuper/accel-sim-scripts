@@ -1,5 +1,3 @@
-dependencies.gv.pdf
-kernel_traces.json
-kernel_dependencies.gv
-sim_stats.json
-sim_dependencies.gv
+*.pdf
+*.gv
+*.json
