@@ -330,6 +330,10 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                     sim_stats[kernel_name]["thread_blocks"][thread_block]["end_time"] = 0
                     sim_stats[kernel_name]["thread_blocks"][thread_block]["time"] = 0
 
+            elif not skipping_kernel and "gpu_tot_sim_cycle = " in line:
+                line_fields = line.split(' ')
+                sim_stats[kernel_name]['total_time'] = int(line_fields[-1])
+
             elif not skipping_kernel and "Finished CTA" in line:
                 line_fields = line.split(' ')
                 thread_block = line_fields[4][line_fields[4].index('(') + 1:\
@@ -341,8 +345,6 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                             str(int(sim_stats[kernel_name]["thread_blocks"][thread_block]\
                             ["end_time"]) - int(sim_stats[kernel_name]["thread_blocks"]\
                             [thread_block]["start_time"]))
-                time = line_fields[6][line_fields[6].index(',') + 1:line_fields[6].index(')')]
-                sim_stats[kernel_name]["total_time"] = max(time, sim_stats[kernel_name]["total_time"])
 
             # Begin parsing mem instructions
             elif not skipping_kernel and "mf:" in line:
