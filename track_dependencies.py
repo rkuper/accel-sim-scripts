@@ -289,6 +289,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                 sim_stats[kernel_name]["id"] = kernel_id
                 sim_stats[kernel_name]["mem_addrs"] = []
                 sim_stats[kernel_name]["num_mem_insts"] = 0
+                sim_stats[kernel_name]["total_time"] = 0
                 sim_stats[kernel_name]["thread_blocks"] = {}
                 sim_stats[kernel_name]["dependencies"] = {}
                 sim_stats[kernel_name]["kernel_name"] = temp_kernel_name
@@ -340,7 +341,9 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                             str(int(sim_stats[kernel_name]["thread_blocks"][thread_block]\
                             ["end_time"]) - int(sim_stats[kernel_name]["thread_blocks"]\
                             [thread_block]["start_time"]))
-
+                sim_stats[kernel_name]["total_time"] = \
+                            line_fields[6][line_fields[6].index(',') + 1:\
+                            line_fields[6].index(')')]
 
             # Begin parsing mem instructions
             elif not skipping_kernel and "mf:" in line:
@@ -1043,7 +1046,7 @@ def get_thread_block_estimated_time(graph=True):
     #                             key=lambda path: get_weight(nx_graph, path))
     # path = heaviest_path
     # print("TEST: " + str(heaviest_path) + " time: " + str((time.time() - test_begin)))
-    print("Time: " + str((time.time() - test_begin)))
+    print("Longest Path Time: " + str((time.time() - test_begin)))
 
     total_cost = 0
     kernel_list = []
@@ -1071,7 +1074,8 @@ def get_thread_block_estimated_time(graph=True):
     if graph:
         graph_dependencies(time_report=False, path=path)
 
-    print("Total Cycle Time: " + str(total_cost))
+    print("Ideal Total Cycle Time: " + str(total_cost))
+    print("Sim Total Cycle Time: " + str(sim[('kernel-' + end_kernel)]['total_time']))
     return
 
 def get_weight(graph, path):
@@ -1079,9 +1083,6 @@ def get_weight(graph, path):
     for index in range(1,len(path)):
         total_cost += graph.get_edge_data(path[index-1], path[index], default=0)['weight']
     return total_cost
-
-
-
 
 
 
