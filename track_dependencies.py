@@ -341,9 +341,8 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                             str(int(sim_stats[kernel_name]["thread_blocks"][thread_block]\
                             ["end_time"]) - int(sim_stats[kernel_name]["thread_blocks"]\
                             [thread_block]["start_time"]))
-                sim_stats[kernel_name]["total_time"] = \
-                            line_fields[6][line_fields[6].index(',') + 1:\
-                            line_fields[6].index(')')]
+                time = line_fields[6][line_fields[6].index(',') + 1:line_fields[6].index(')')]
+                sim_stats[kernel_name]["total_time"] = max(time, sim_stats[kernel_name]["total_time"])
 
             # Begin parsing mem instructions
             elif not skipping_kernel and "mf:" in line:
