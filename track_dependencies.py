@@ -430,7 +430,6 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
 
 
 
-# def find_dependencies(depth, kernel_name, dependencies):
 def find_dependencies(kernel_name, depth, info):
     if (start_kernel == end_kernel):
         return
@@ -451,7 +450,7 @@ def find_dependencies(kernel_name, depth, info):
             before_type = 'R' if (int(current_address, 16) & 0x1) else 'W'
 
             # Covers all subsequent kernels - takes FOREVER
-            for future_kernel in range(kernel + 1, min(kernel + depth + 1, end_kernel)):
+            for future_kernel in range(kernel + 1, min(kernel + depth + 1, end_kernel + 1)):
                 future_kernel_name = 'kernel-' + str(future_kernel)
                 for future_block in info[future_kernel_name]["thread_blocks"]:
                     future_block_name = future_kernel_name + '_' + str(future_block)
@@ -1026,21 +1025,29 @@ def get_thread_block_estimated_time(graph=True):
     test_begin = time.time()
 
     # Go through each thread block and find longest path
-    best_found = [[], 0]
+    best_found = ['', 0]
     thread_block_queue = deque()
-    thread_block_queue.append([['Start'], 0])
+    # thread_block_queue.append([['Start'], 0])
+    thread_block_queue.append(['Start', 0])
     while (len(thread_block_queue) != 0):
         current_path = thread_block_queue.popleft()
-        if (current_path[0][-1] == 'Finish'):
+        # if (current_path[0][-1] == 'Finish'):
+        if (current_path[0] == 'Finish'):
             if (current_path[1] > best_found[1]):
-                best_found = [current_path[0].copy(), current_path[1]]
-        for dependent_thread_block in nx_graph.neighbors(current_path[0][-1]):
-            next_path = [current_path[0].copy(), current_path[1]]
-            next_path[0].append(dependent_thread_block)
-            next_path[1] = current_path[1] + nx_graph.get_edge_data(next_path[0][-2], next_path[0][-1],
+                # best_found = [current_path[0].copy(), current_path[1]]
+                best_found = [current_path[0], current_path[1]]
+        # for dependent_thread_block in nx_graph.neighbors(current_path[0][-1]):
+        for dependent_thread_block in nx_graph.neighbors(current_path[0]):
+            # next_path = [current_path[0].copy(), current_path[1]]
+            # next_path[0].append(dependent_thread_block)
+            # next_path[1] = current_path[1] + nx_graph.get_edge_data(next_path[0][-2], next_path[0][-1],
+            #         default=0)['weight']
+            next_path = [dependent_thread_block, current_path[1]]
+            next_path[1] = current_path[1] + nx_graph.get_edge_data(current_path[0], dependent_thread_block,
                     default=0)['weight']
             thread_block_queue.append(next_path)
     path = best_found[0]
+    total_cost = best_found[1]
 
     # heaviest_path = max((path for path in nx.all_simple_paths(nx_graph, 'Start', 'Finish')), \
     #                             key=lambda path: get_weight(nx_graph, path))
@@ -1048,34 +1055,34 @@ def get_thread_block_estimated_time(graph=True):
     # print("TEST: " + str(heaviest_path) + " time: " + str((time.time() - test_begin)))
     print("Longest Path Time: " + str((time.time() - test_begin)))
 
-    total_cost = 0
-    kernel_list = []
-    path.remove('Start')
-    path.remove('Finish')
-    print('Start')
-    for block_index in range(len(path)):
-        block = path[block_index]
-        kernel_name = block.split('_')[0]
-        kernel_list.append(int(kernel_name.split('-')[1]))
-        thread_block = block.split('_')[1]
-        print(kernel_name + ', thread block-' + thread_block)
-        edge_cost = int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
-        if (block_index + 1) != len(path):
-            former_end = int(sim_stats[kernel_name]["thread_blocks"][thread_block]["end_time"])
-            latter_block = path[block_index + 1]
-            latter_thread_block = (path[block_index + 1]).split('_')[1]
-            latter_kernel_name = (path[block_index + 1]).split('_')[0]
-            latter_start = int(sim_stats[latter_kernel_name]["thread_blocks"]\
-                    [latter_thread_block]["start_time"])
-        total_cost += int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
-    print('Finish')
+    # total_cost = 0
+    # kernel_list = []
+    # path.remove('Start')
+    # path.remove('Finish')
+    # print('Start')
+    # for block_index in range(len(path)):
+    #     block = path[block_index]
+    #     kernel_name = block.split('_')[0]
+    #     kernel_list.append(int(kernel_name.split('-')[1]))
+    #     thread_block = block.split('_')[1]
+    #     print(kernel_name + ', thread block-' + thread_block)
+    #     edge_cost = int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
+    #     if (block_index + 1) != len(path):
+    #         former_end = int(sim_stats[kernel_name]["thread_blocks"][thread_block]["end_time"])
+    #         latter_block = path[block_index + 1]
+    #         latter_thread_block = (path[block_index + 1]).split('_')[1]
+    #         latter_kernel_name = (path[block_index + 1]).split('_')[0]
+    #         latter_start = int(sim_stats[latter_kernel_name]["thread_blocks"]\
+    #                 [latter_thread_block]["start_time"])
+    #     total_cost += int(sim_stats[kernel_name]["thread_blocks"][thread_block]["time"])
+    # print('Finish')
 
     # Graph the path
-    if graph:
-        graph_dependencies(time_report=False, path=path)
+    # if graph:
+    #     graph_dependencies(time_report=False, path=path)
 
     print("Ideal Total Cycle Time: " + str(total_cost))
-    print("Sim Total Cycle Time: " + str(sim[('kernel-' + end_kernel)]['total_time']))
+    print("Sim Total Cycle Time: " + str(sim_stats[('kernel-' + str(end_kernel))]['total_time']))
     return
 
 def get_weight(graph, path):
