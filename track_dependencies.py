@@ -31,8 +31,9 @@ from graphviz import Digraph
 sim_stats = {}
 start_kernel = 0
 end_kernel = float('inf')
-trace_tbd_graph = Digraph(comment='Kernel Trace Dependencies')
-sim_tbd_graph = Digraph(comment='Kernel Sim Dependencies')
+tbd_graph = Digraph(comment='Thread Block Dependencies')
+kernel_graph = Digraph(comment='Ideal Kernel Estimate')
+tb_graph = Digraph(comment='Ideal Thread Block Estimate')
 CACHE_LINE_SIZE = 0xFFFFFFFFFFFFFF80
 
 
@@ -92,6 +93,11 @@ def main():
     cut_space = Popen(['cut', '-d', ' ', '-f', '1'], stdin = cut_col.stdout, stdout = PIPE)
     cut_dec = Popen(['cut', '-d', '.', '-f', '1'], stdin = cut_col.stdout, stdout = PIPE)
     device_number = cut_dec.communicate()[0].decode('ascii').rstrip()
+
+    # Set log file
+    term_out = sys.stdout
+    log_file = open('dependencies.log','wt')
+    sys.stdout = log_file
 
     # FIXME Set to 0 for debugging, NOT for normal use :/
     # device_number = 0 if device_number == '' else int(device_number)
@@ -200,6 +206,10 @@ def main():
     print("Ideal Thread Block Estimate Time: " + str(ideal_thread_block_end - ideal_thread_block_begin))
     print('---------------------------------')
     print("Total Runtime: " + str((time.time() - total_begin)) + "s\n")
+
+    # Close log file
+    log_file.close()
+    sys.stdout = term_out
 
     # Note for info
     print("\n\n*** NOTE: Third arguement 'view' in " + \
@@ -495,14 +505,16 @@ def find_dependencies(kernel_name, depth, info):
 
 """""""""""""""
 
-def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', time_report=True, path=[]):
+def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', \
+        time_report=True, path=[], name="", graph=tbd_graph):
     graph_begin = time.time()
+
     graph_dependencies_helper(kernels=kernels, thread_blocks=thread_blocks, \
-        view=view, info=sim_stats, graph=sim_tbd_graph, info_name="sim", path=path)
+        view=view, info=sim_stats, graph=graph, name=name, path=path)
 
     # Combine the two graphs
-    os.system("rm -f dependencies.gv.pdf")
-    os.system("mv sim_dependencies.gv.pdf dependencies.gv.pdf")
+    # os.system("rm -f dependencies.gv.pdf")
+    # os.system("mv sim_dependencies.gv.pdf dependencies.gv.pdf")
 
     if time_report:
         print("Graph Time: " + str(time.time() - graph_begin) + '\n')
@@ -510,7 +522,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', t
 
 
 
-def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_name, path):
+def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, name, path):
 
     # Grab all needed info from the dependency section of stats/traces
     needed_info = {}
@@ -566,7 +578,7 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
     kernel_description = 'all' if len(kernels) == 0 else str(kernels)
     thread_blocks_description = 'all' if len(thread_blocks) == 0 else str(thread_blocks)
     title = '<<font point-size="100"><br/><b>'
-    title += 'Simulation Output' if (info_name == 'sim') else 'Trace File'
+    title += 'Simulation Output'
     title += ' Dependencies</b><br/></font><font point-size="80">'
     title += 'kernels=' + kernel_description + ', thread_blocks=' + \
             thread_blocks_description + ', view=' + view
@@ -611,11 +623,10 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                             (kernel_match and thread_block_match) else thread_block
 
                     # Add time info for sim graph
-                    if info_name == 'sim':
-                        time = info[kernel_name]["thread_blocks"][thread_block]["time"]
-                        thread_block_label = ('<<b>' + thread_block + '<br/>' + \
-                                time + '</b>>') if (kernel_match and thread_block_match)\
-                                else ('<' + thread_block + '<br/>' + time + '>')
+                    time = info[kernel_name]["thread_blocks"][thread_block]["time"]
+                    thread_block_label = ('<<b>' + thread_block + '<br/>' + \
+                            time + '</b>>') if (kernel_match and thread_block_match)\
+                            else ('<' + thread_block + '<br/>' + time + '>')
 
                     thread_block_id = kernel_name + '_' + thread_block
                     current_kernel.node(thread_block_id, thread_block_label, \
@@ -636,28 +647,15 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                                 (kernel_match and thread_block_match) else thread_block
 
                         # Add time info for sim graph
-                        if info_name == 'sim':
-                            time = info[kernel_name]["thread_blocks"][thread_block]["time"]
-                            thread_block_label = ('<<b>' + thread_block + '<br/>' + \
-                                    time + '</b>>') if (kernel_match and thread_block_match)\
-                                    else ('<' + thread_block + '<br/>' + time + '>')
+                        time = info[kernel_name]["thread_blocks"][thread_block]["time"]
+                        thread_block_label = ('<<b>' + thread_block + '<br/>' + \
+                                time + '</b>>') if (kernel_match and thread_block_match)\
+                                else ('<' + thread_block + '<br/>' + time + '>')
 
                         thread_block_id = kernel_name + '_' + thread_block
                         current_kernel.node(thread_block_id, thread_block_label, \
                                 style="rounded,filled", color="black", \
                                 fillcolor=node_color, penwidth=node_width)
-
-                # FIXME remove later
-                for thread_block in info[kernel_name]["thread_blocks"]:
-                    if kernel_name == 'kernel-34' or kernel_name == 'kernel-31':
-                        break
-                    thread_block_id = kernel_name + '_' + thread_block
-                    time = info[kernel_name]["thread_blocks"][thread_block]["time"]
-                    thread_block_label = ('<' + thread_block + '<br/>' + time + '>')
-                    current_kernel.node(thread_block_id, thread_block_label, \
-                            style="rounded,filled", color="black", \
-                            fillcolor='white', penwidth='3')
-
 
             # Change oppacities of edges if necessary
             for block_depend in needed_info[kernel_name]["dependencies"]:
@@ -720,15 +718,23 @@ def graph_dependencies_helper(kernels, thread_blocks, view, info, graph, info_na
                 graph.edge(kernel_name, kernel_dependency, color=edge_color, \
                         penwidth=edge_weight)
 
-    create_graph_pdf(info_name, graph)
+    create_graph_pdf(name, graph)
     return
 
 
 
-def create_graph_pdf(info_name, graph):
-    print('Creating ' + info_name + ' dependency graph...', end = ' ')
-    sys.stdout.flush()
-    graph.render((info_name + '_dependencies.gv'))
+def create_graph_pdf(name, graph):
+    if name == "":
+        print('Creating dependency graph...', end = ' ')
+        sys.stdout.flush()
+        graph.render('dependencies.gv')
+        os.system("rm -f dependencies.gv")
+    else:
+        print('Creating ' + name + ' dependency graph...', end = ' ')
+        sys.stdout.flush()
+        graph.render((name + '_dependencies.gv'))
+        os.system(("rm -f " + name + "_dependencies.gv.pdf"))
+
     print('Done')
     return
 
@@ -943,10 +949,12 @@ def get_kernel_estimated_time(graph=True):
 
     # Graph the path
     if graph:
-        graph_dependencies(kernels=kernel_list, view='kernel', time_report=False)
+        graph_dependencies(kernels=kernel_list, view='kernel', time_report=False, \
+                graph=kernel_graph, name="ideal_kernel")
 
     print("Ideal Total Cycle Time: " + str(total_cost))
     print("Sim Total Cycle Time: " + str(sim_stats[('kernel-' + str(end_kernel))]['total_time']))
+    sys.stdout.flush()
     return
 
 
@@ -1008,11 +1016,12 @@ def get_thread_block_estimated_time(graph=True):
             nx_graph.add_edge(block, 'Finish', weight=0)
 
     # DFS for finding biggest path
+    debug_time = time.time()
     best_found = ['', 0]
-    thread_block_queue = deque()
-    thread_block_queue.append([['Start'], 0])
-    while (len(thread_block_queue) != 0):
-        current_path = thread_block_queue.pop()
+    thread_block_stack = deque()
+    thread_block_stack.append([['Start'], 0])
+    while (len(thread_block_stack) != 0):
+        current_path = thread_block_stack.pop()
         if (current_path[0][-1] == 'Finish'):
             if (current_path[1] > best_found[1]):
                 best_found = [current_path[0].copy(), current_path[1]]
@@ -1021,7 +1030,11 @@ def get_thread_block_estimated_time(graph=True):
             next_path[0].append(dependent_thread_block)
             next_path[1] = current_path[1] + nx_graph.get_edge_data(next_path[0][-2], next_path[0][-1],
                     default=0)['weight']
-            thread_block_queue.append(next_path)
+            thread_block_stack.append(next_path)
+        if (time.time() - debug_time) > 1800:
+            pprint.pprint(thread_block_stack)
+            print("current: " + str(current))
+            print("best: " + str(best_found))
     path = best_found[0]
     total_cost = best_found[1]
 
@@ -1038,7 +1051,7 @@ def get_thread_block_estimated_time(graph=True):
 
     # Graph the path
     if graph:
-        graph_dependencies(time_report=False, path=path)
+        graph_dependencies(time_report=False, path=path, graph=tb_graph, name="ideal_tb")
 
     print("Ideal Total Cycle Time: " + str(total_cost))
     print("Sim Total Cycle Time: " + str(sim_stats[('kernel-' + str(end_kernel))]['total_time']))
@@ -1058,7 +1071,7 @@ def print_dependency_stats(graph):
             dependency_stats_title + "\n" + ("=" * len(dependency_stats_title))
     print(dependency_stats_title)
     if graph:
-        global trace_tbd_graph, sim_tbd_graph
+        global tbd_graph
         graph_dependencies(time_report=False)
 
     # Sim stat info
