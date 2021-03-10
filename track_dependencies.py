@@ -733,7 +733,7 @@ def create_graph_pdf(name, graph):
         print('Creating ' + name + ' dependency graph...', end = ' ')
         sys.stdout.flush()
         graph.render((name + '_dependencies.gv'))
-        os.system(("rm -f " + name + "_dependencies.gv.pdf"))
+        os.system(("rm -f " + name + "_dependencies.gv"))
 
     print('Done')
     return
@@ -1015,39 +1015,38 @@ def get_thread_block_estimated_time(graph=True):
         if num_out == 0:
             nx_graph.add_edge(block, 'Finish', weight=0)
 
-    # DFS for finding biggest path
-    debug_time = time.time()
-    best_found = ['', 0]
-    thread_block_stack = deque()
-    thread_block_stack.append([['Start'], 0])
-    while (len(thread_block_stack) != 0):
-        current_path = thread_block_stack.pop()
-        if (current_path[0][-1] == 'Finish'):
-            if (current_path[1] > best_found[1]):
-                best_found = [current_path[0].copy(), current_path[1]]
-        for dependent_thread_block in nx_graph.neighbors(current_path[0][-1]):
-            next_path = [current_path[0].copy(), current_path[1]]
-            next_path[0].append(dependent_thread_block)
-            next_path[1] = current_path[1] + nx_graph.get_edge_data(next_path[0][-2], next_path[0][-1],
-                    default=0)['weight']
-            thread_block_stack.append(next_path)
-        if (time.time() - debug_time) > 1800:
-            pprint.pprint(thread_block_stack)
-            print("current: " + str(current))
-            print("best: " + str(best_found))
-    path = best_found[0]
-    total_cost = best_found[1]
+    # Topological sort, then check predecessor for current running max cost
+    weights = {}
+    top_sort = list(nx.topological_sort(nx_graph))
+    for thread_block in top_sort:
+        if thread_block == "Start":
+            weights[thread_block] = [0, thread_block]
+            continue
+        max_weight = [0, "Start"]
+        for predecessor in nx_graph.predecessors(thread_block):
+            current_weight = nx_graph.get_edge_data(predecessor, thread_block, \
+                    default={'weight': 0})['weight'] + weights[predecessor][0]
 
-    # Print path
-    kernel_list = []
-    path.remove('Start')
-    path.remove('Finish')
-    for block_index in range(len(path)):
-        block = path[block_index]
-        kernel_name = block.split('_')[0]
-        kernel_list.append(int(kernel_name.split('-')[1]))
-        thread_block = block.split('_')[1]
-        print(str(block_index + 1) + ': ' + kernel_name + ', thread block-' + thread_block)
+            if current_weight > max_weight[0]:
+                max_weight = [current_weight, predecessor]
+        weights[thread_block] = max_weight
+        if thread_block == "Finish":
+            break
+
+    # Get the path and print out its info
+    total_cost = weights["Finish"][0]
+    path = ["Finish"]
+    while path[-1] != "Start":
+        path.append(weights[path[-1]][1])
+    path.remove("Start")
+    path.remove("Finish")
+    path.reverse()
+
+    for block in range(len(path)):
+        kernel = path[block].split('_')[0]
+        thread_block = path[block].split('_')[1]
+        cost = sim_stats[kernel]["thread_blocks"][thread_block]["time"]
+        print(str(block) + ": " + path[block] + " - " + str(cost))
 
     # Graph the path
     if graph:
