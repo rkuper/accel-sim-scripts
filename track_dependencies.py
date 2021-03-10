@@ -814,67 +814,6 @@ def get_kernel_dependencies(info=sim_stats):
     return kernel_dependencies
 
 
-def get_max_kernel_time_old(kernel, early_offset):
-    max_cost = 0
-    for thread_block in kernel["thread_blocks"]:
-        time = int(kernel["thread_blocks"][thread_block]["time"])
-        current_offset = int(kernel["thread_blocks"][thread_block]["start_time"])
-        time_offset = current_offset - early_offset
-        time += time_offset
-        max_cost = time if (time > max_cost) else max_cost
-    return max_cost
-
-
-# TODO KEEP - IS THIS THE KEY???
-def get_kernel_estimated_time_old(depth):
-    kernel_time_title = "=   " + "Ideal Kernel Cycle Times" + "   ="
-    kernel_time_title = "\n" + ("=" * len(kernel_time_title)) + "\n" + \
-            kernel_time_title + "\n" + ("=" * len(kernel_time_title))
-    print(kernel_time_title)
-
-    kernel_dependencies = get_kernel_dependencies(sim_stats)
-    current_kernel = 'kernel-' + str(start_kernel)
-    current_cost = 0
-    total_cost = 0
-
-    kernel_list = []
-    for kernel in range(start_kernel, end_kernel + 1):
-        kernel_list.append('kernel-' + str(kernel))
-
-    time_offset = float('inf')
-    while current_kernel != ('kernel-' + str(end_kernel)):
-
-        # Get earliest start time for kernel
-        for thread_block in sim_stats[current_kernel]["thread_blocks"]:
-            start_time = int(sim_stats[current_kernel]["thread_blocks"][thread_block]["start_time"])
-            time_offset = start_time if (start_time < time_offset) else time_offset
-
-        current_kernel_num = int(current_kernel.split('-')[1])
-        current_cost = get_max_kernel_time(sim_stats[current_kernel], time_offset)
-        kernel_list.remove(current_kernel)
-
-        # Check future kernels (in depth) for independent times
-        for test_kernel in range(1, depth + 1):
-            test_kernel_name = 'kernel-' + str(int(current_kernel.split('-')[1]) + test_kernel)
-            if test_kernel_name not in kernel_list:
-                continue
-
-            # Check for independent kernels for max cycle count (horizontally in graph)
-            if (current_kernel_num + test_kernel) not in kernel_dependencies[current_kernel_num]:
-                if (int(current_kernel.split('-')[1]) + test_kernel) < end_kernel:
-                    kernel_list.remove(test_kernel_name)
-                test_cost = get_max_kernel_time(sim_stats[test_kernel_name], time_offset)
-                current_cost = test_cost if (test_cost > current_cost) else current_cost
-            else:
-                break
-
-        total_cost += current_cost
-        current_kernel = kernel_list[0]
-
-    print("Total Cycle Time: " + str(total_cost))
-    return
-
-
 def get_max_kernel_time(kernel):
     max_cost = 0
     for thread_block in kernel["thread_blocks"]:
@@ -920,32 +859,38 @@ def get_kernel_estimated_time(graph=True):
         if num_out == 0:
             nx_graph.add_edge(kernel, 'Finish', weight=0)
 
-    # DFS for longest path
-    best_found = ['', 0]
-    kernel_queue = deque()
-    kernel_queue.append([['Start'], 0])
-    while (len(kernel_queue) != 0):
-        current_path = kernel_queue.pop()
-        if (current_path[0][-1] == 'Finish'):
-            if (current_path[1] > best_found[1]):
-                best_found = [current_path[0].copy(), current_path[1]]
-        for dependent_kernel in nx_graph.neighbors(current_path[0][-1]):
-            next_path = [current_path[0].copy(), current_path[1]]
-            next_path[0].append(dependent_kernel)
-            next_path[1] = current_path[1] + nx_graph.get_edge_data(next_path[0][-2], next_path[0][-1],
-                    default=0)['weight']
-            kernel_queue.append(next_path)
-    path = best_found[0]
-    total_cost = best_found[1]
+    # Topological sort, then check predecessor for current running max cost
+    weights = {}
+    top_sort = list(nx.topological_sort(nx_graph))
+    for kernel in top_sort:
+        if kernel == "Start":
+            weights[kernel] = [0, kernel]
+            continue
+        max_weight = [0, "Start"]
+        for predecessor in nx_graph.predecessors(kernel):
+            current_weight = nx_graph.get_edge_data(predecessor, kernel, \
+                    default={'weight': 0})['weight'] + weights[predecessor][0]
 
-    # Print path
+            if current_weight > max_weight[0]:
+                max_weight = [current_weight, predecessor]
+        weights[kernel] = max_weight
+        if kernel == "Finish":
+            break
+
+    # Get the path and print out its info
+    total_cost = weights["Finish"][0]
+    path = ["Finish"]
+    while path[-1] != "Start":
+        path.append(weights[path[-1]][1])
+    path.remove("Start")
+    path.remove("Finish")
+    path.reverse()
     kernel_list = []
-    path.remove('Start')
-    path.remove('Finish')
-    for kernel_index in range(len(path)):
-        kernel_name = path[kernel_index]
-        kernel_list.append(int(kernel_name.split('-')[1]))
-        print(str(kernel_index + 1) + ': ' + kernel_name)
+    for kernel in range(len(path)):
+        kernel_list.append(int(path[kernel].split('-')[1]))
+        predecessor = "Start" if (kernel == 0) else path[kernel - 1]
+        cost = nx_graph.get_edge_data(predecessor, path[kernel], default={'weight': 0})['weight']
+        print(str(kernel) + ": " + path[kernel] + " - " + str(cost))
 
     # Graph the path
     if graph:
@@ -967,7 +912,6 @@ def get_thread_block_estimated_time(graph=True):
     # Make DAG and average kernel timing info
     nx_graph = nx.DiGraph()
     kernel_averages = {}
-
 
     # Add the nodes for all thread blocks
     # keep average kernel cost for removing unnecessary nodes later
@@ -1041,11 +985,9 @@ def get_thread_block_estimated_time(graph=True):
     path.remove("Start")
     path.remove("Finish")
     path.reverse()
-
     for block in range(len(path)):
-        kernel = path[block].split('_')[0]
-        thread_block = path[block].split('_')[1]
-        cost = sim_stats[kernel]["thread_blocks"][thread_block]["time"]
+        predecessor = "Start" if (block == 0) else path[block - 1]
+        cost = nx_graph.get_edge_data(predecessor, path[block], default={'weight': 0})['weight']
         print(str(block) + ": " + path[block] + " - " + str(cost))
 
     # Graph the path
