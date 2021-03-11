@@ -205,16 +205,17 @@ def main():
     sys.stdout = term_out
 
     # Note for info
-    print("\n\n*** NOTE: Third arguement 'view' in " + \
-            "graph_dependencies(kernels=[], thread_blocks=[], view=..., source=...)" + \
-            " can show:")
-    print("\t'all': everything")
-    print("\t'kernel': kernels and the kernels they depend on (no shown thread_block)")
-    print("\t'thread-block': selected kernels and thread blocks, " + \
-            "along with dependent kernels and thread blocks\n")
-    print("Fourth argument 'source' specifies either:")
-    print("\t'all': dependencies from the both data sets")
-    print("\t'sim': dependencies from the simulation output\n")
+    if sys.flags.interactive:
+        print("\n\n*** NOTE: Third arguement 'view' in " + \
+                "graph_dependencies(kernels=[], thread_blocks=[], view=..., source=...)" + \
+                " can show:")
+        print("\t'all': everything")
+        print("\t'kernel': kernels and the kernels they depend on (no shown thread_block)")
+        print("\t'thread-block': selected kernels and thread blocks, " + \
+                "along with dependent kernels and thread blocks\n")
+        print("Fourth argument 'source' specifies either:")
+        print("\t'all': dependencies from the both data sets")
+        print("\t'sim': dependencies from the simulation output\n")
     return
 
 
