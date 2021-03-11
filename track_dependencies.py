@@ -30,10 +30,9 @@ from graphviz import Digraph
 """""""""
 sim_stats = {}
 start_kernel = 0
+test_name = 'unknown'
 end_kernel = float('inf')
 tbd_graph = Digraph(comment='Thread Block Dependencies')
-kernel_graph = Digraph(comment='Ideal Kernel Estimate')
-tb_graph = Digraph(comment='Ideal Thread Block Estimate')
 CACHE_LINE_SIZE = 0xFFFFFFFFFFFFFF80
 
 
@@ -50,27 +49,15 @@ def main():
             "Specify the benchmark (ex. rnn_bench from Deepbench)")
     parser.add_argument("-t", "--test", help = \
             ("Specify the benchmark parameters delimited by '_' " + \
-            "(ex. train_half_8_8_1_lstm)"))
+            "(ex. train_half_8_8_1_lstm)"), default='unknown')
     parser.add_argument("-a", "--sass", help = \
             "Specify the SASS that the traces used (ex. QV100)")
-    parser.add_argument("-c", "--compressed", help = \
-            "Use uncompressed addresses from the traces when parsing", action='store_true')
     parser.add_argument("-s", "--start", help = \
             "Which kernel to start parsing from", default=0)
     parser.add_argument("-e", "--end", help = \
             "Which kernel to end parsing on", default=float('inf'))
     parser.add_argument("-d", "--depth", help = \
             "Data contains line the data was obtained from", default=1)
-    parser.add_argument("-l", "--line_debug", help = \
-            "Data contains line the data was obtained from", action='store_true')
-    parser.add_argument("-o", "--open", help = \
-            "Open and use json data given in json file named: sim_stats.json", \
-            action='store_true')
-    parser.add_argument("-j", "--json", help = \
-            "Output sim_stats to json file (sim_stats.json)", \
-            action='store_true')
-    parser.add_argument("-g", "--graph", help = \
-            "Output a graph of all kernel dependencies found", action='store_true')
     args = parser.parse_args()
 
     # Set timing variables
@@ -94,10 +81,17 @@ def main():
     cut_dec = Popen(['cut', '-d', '.', '-f', '1'], stdin = cut_col.stdout, stdout = PIPE)
     device_number = cut_dec.communicate()[0].decode('ascii').rstrip()
 
-    # Set log file
+    # Set log and json files
+    global test_name
+    test_name = args.test
+    if not os.path.exists(args.test):
+        os.makedirs(args.test)
     term_out = sys.stdout
-    log_file = open('dependencies.log','wt')
+    log_file_name = './' + args.test + '/' + args.test + '.log'
+    log_file = open(log_file_name, 'wt')
     sys.stdout = log_file
+    json_file = './' + args.test + '/' + args.test + '.json'
+    json_found = os.path.isfile(json_file)
 
     # FIXME Set to 0 for debugging, NOT for normal use :/
     # device_number = 0 if device_number == '' else int(device_number)
@@ -123,17 +117,18 @@ def main():
         print("End kernel should not be earlier than the starting kernel\n")
         end_kernel = float('inf')
 
+
     # If data exists and want to use, skip getting it again
-    if args.open and os.path.isfile('sim_stats.json'):
-        sim_stats_title = "=   Getting Simulation Info From sim_stats.json   ="
+    if json_found:
+        sim_stats_title = "=   Getting Simulation Info From " + args.test + "   ="
         sim_stats_title = ("=" * len(sim_stats_title)) + "\n"  + \
                 sim_stats_title + "\n" + ("=" * len(sim_stats_title))
         print(sim_stats_title)
         parse_sim_begin = time.time()
         sim_dependencies_begin = time.time()
         global sim_stats
-        print("Gathering sim_stats.json data...", end = ' ')
-        sim_stats = json.load(open('sim_stats.json', 'r'))
+        print("Gathering " + json_file + " data...", end = ' ')
+        sim_stats = json.load(open(json_file, 'r'))
         print("Done")
         kernels = sorted(sim_stats.keys())
         start_kernel = int(kernels[0].split('-')[1])
@@ -145,8 +140,7 @@ def main():
     else:
         # Manage kernel traces
         parse_sim_begin = time.time()
-        parse_sim_output(cuda_version, args.benchmark, args.test, sass, \
-                args.line_debug)
+        parse_sim_output(cuda_version, args.benchmark, args.test, sass)
         parse_sim_end = time.time()
 
         # Grab kernel trace dependencies
@@ -166,23 +160,22 @@ def main():
         print('Done')
 
     # Output to .json file
-    if args.json:
-        print("Writing file 'sim_stats.json...'", end = ' ')
-        with open('sim_stats.json','w') as fp:
+    if not json_found:
+        print("Writing file '" + json_file + "...'", end = ' ')
+        with open(json_file,'w') as fp:
             json.dump(sim_stats, fp)
         print("Done")
 
     # Manage trace stats
     graph_begin = time.time()
-    print_dependency_stats(args.graph)
+    print_dependency_stats()
     graph_end = time.time()
 
     # Print kernel names
-    # print_kernel_names()
+    print_kernel_names()
 
     # Print kernel level estimated cycle time
     ideal_kernel_begin = time.time()
-    # get_kernel_estimated_time(int(args.depth))
     get_kernel_estimated_time()
     ideal_kernel_end = time.time()
 
@@ -197,15 +190,15 @@ def main():
     timing_title = ("=" * len(timing_title)) + "\n"  + \
         timing_title + "\n" + ("=" * len(timing_title))
     print(timing_title)
-    print("Parse Simulation Output Time: " + str(parse_sim_end - parse_sim_begin))
-    print("Get Simulation Dependencies Time: " + str(sim_dependencies_end - \
-            sim_dependencies_begin))
-    if args.graph:
-        print("Graph Time: " + str(graph_end - graph_begin))
-    print("Ideal Kernel Estimate Time: " + str(ideal_kernel_end - ideal_kernel_begin))
-    print("Ideal Thread Block Estimate Time: " + str(ideal_thread_block_end - ideal_thread_block_begin))
+    print("Parse Simulation Output Time: " + str(round(parse_sim_end - parse_sim_begin, 4)))
+    print("Get Simulation Dependencies Time: " + str(round(sim_dependencies_end - \
+            sim_dependencies_begin, 4)))
+    print("Graph Time: " + str(round(graph_end - graph_begin, 4)))
+    print("Ideal Kernel Estimate Time: " + str(round(ideal_kernel_end - ideal_kernel_begin, 4)))
+    print("Ideal Thread Block Estimate Time: " + \
+            str(round(ideal_thread_block_end - ideal_thread_block_begin, 4)))
     print('---------------------------------')
-    print("Total Runtime: " + str((time.time() - total_begin)) + "s\n")
+    print("Total Runtime: " + str(round((time.time() - total_begin), 4)) + "s")
 
     # Close log file
     log_file.close()
@@ -226,7 +219,7 @@ def main():
 
 
 
-def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
+def parse_sim_output(cuda_version, benchmark, test, sass):
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
@@ -252,8 +245,8 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                 "accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>")
         return
     parse_sim_title = "=   Parsing Simulation Output   ="
-    parse_sim_title = "\n" + ("=" * len(parse_sim_title)) + "\n" + \
-            parse_sim_title + "\n" + ("=" * len(parse_sim_title))
+    parse_sim_title = ("=" * len(parse_sim_title)) + "\n" + parse_sim_title + \
+            "\n" + ("=" * len(parse_sim_title))
     print(parse_sim_title)
     print("Using test: " + test_dir[test_dir.rfind('/') + 1:])
 
@@ -304,7 +297,7 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                 sim_stats[kernel_name]["total_time"] = 0
                 sim_stats[kernel_name]["thread_blocks"] = {}
                 sim_stats[kernel_name]["dependencies"] = {}
-                sim_stats[kernel_name]["kernel_name"] = temp_kernel_name
+                sim_stats[kernel_name]["kernel_name"] = temp_kernel_name.rstrip()
                 began_print = True
                 print("Parsing kernel " + str(kernel_id) + "...", end = ' ')
                 sys.stdout.flush()
@@ -394,9 +387,6 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                             [warp]["mem_insts"][inst]["line_addr"] = []
                     sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
                             [warp]["mem_insts"][inst]["addr"] = []
-                    if line_debug:
-                        sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
-                                [warp]["mem_insts"][inst]["line"] = []
 
                 # Add all important fields
                 mem_type = line_fields[6].replace(',', '')
@@ -423,11 +413,6 @@ def parse_sim_output(cuda_version, benchmark, test, sass, line_debug):
                         .append(type_address)
                 if type_address not in sim_stats[kernel_name]["mem_addrs"]:
                     sim_stats[kernel_name]["mem_addrs"].append(type_address)
-
-                # Only include the line in debug mode
-                if line_debug:
-                    sim_stats[kernel_name]["thread_blocks"][thread_block]["warps"]\
-                            [warp]["mem_insts"][inst]["line"].append(line.strip())
 
                 # Increment counters
                 sim_stats[kernel_name]["thread_blocks"][thread_block]["num_mem_insts"] += 1
@@ -517,7 +502,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', source='all', \
     # os.system("mv sim_dependencies.gv.pdf dependencies.gv.pdf")
 
     if time_report:
-        print("Graph Time: " + str(time.time() - graph_begin) + '\n')
+        print("Graph Time: " + str(round(time.time() - graph_begin, 4)) + '\n')
     return
 
 
@@ -727,13 +712,13 @@ def create_graph_pdf(name, graph):
     if name == "":
         print('Creating dependency graph...', end = ' ')
         sys.stdout.flush()
-        graph.render('dependencies.gv')
-        os.system("rm -f dependencies.gv")
+        graph.render('./' + test_name + '/dependencies.gv')
+        os.system("rm -f " + test_name + "/dependencies.gv")
     else:
         print('Creating ' + name + ' dependency graph...', end = ' ')
         sys.stdout.flush()
-        graph.render((name + '_dependencies.gv'))
-        os.system(("rm -f " + name + "_dependencies.gv"))
+        graph.render(("./" + test_name + "/" + name + '_dependencies.gv'))
+        os.system(("rm -f ./" + test_name + "/" + name + "_dependencies.gv"))
 
     print('Done')
     return
@@ -822,7 +807,7 @@ def get_max_kernel_time(kernel):
     return max_cost
 
 
-def get_kernel_estimated_time(graph=True):
+def get_kernel_estimated_time():
     kernel_time_title = "=   " + "Ideal Kernel Cycle Times" + "   ="
     kernel_time_title = "\n" + ("=" * len(kernel_time_title)) + "\n" + \
             kernel_time_title + "\n" + ("=" * len(kernel_time_title))
@@ -893,9 +878,8 @@ def get_kernel_estimated_time(graph=True):
         print(str(kernel) + ": " + path[kernel] + " - " + str(cost))
 
     # Graph the path
-    if graph:
-        graph_dependencies(kernels=kernel_list, view='kernel', time_report=False, \
-                graph=kernel_graph, name="ideal_kernel")
+    graph_dependencies(kernels=kernel_list, view='kernel', time_report=False, \
+            graph=tbd_graph, name="ideal_kernel")
 
     print("Ideal Total Cycle Time: " + str(total_cost))
     print("Sim Total Cycle Time: " + str(sim_stats[('kernel-' + str(end_kernel))]['total_time']))
@@ -903,7 +887,7 @@ def get_kernel_estimated_time(graph=True):
     return
 
 
-def get_thread_block_estimated_time(graph=True):
+def get_thread_block_estimated_time():
     cta_time_title = "=   " + "Ideal Thread Block Cycle Path and Time" + "   ="
     cta_time_title = "\n" + ("=" * len(cta_time_title)) + "\n" + \
             cta_time_title + "\n" + ("=" * len(cta_time_title))
@@ -991,8 +975,7 @@ def get_thread_block_estimated_time(graph=True):
         print(str(block) + ": " + path[block] + " - " + str(cost))
 
     # Graph the path
-    if graph:
-        graph_dependencies(time_report=False, path=path, graph=tb_graph, name="ideal_tb")
+    graph_dependencies(time_report=False, path=path, graph=tbd_graph, name="ideal_tb")
 
     print("Ideal Total Cycle Time: " + str(total_cost))
     print("Sim Total Cycle Time: " + str(sim_stats[('kernel-' + str(end_kernel))]['total_time']))
@@ -1006,14 +989,13 @@ def get_thread_block_estimated_time(graph=True):
 
 """""""""""""""
 
-def print_dependency_stats(graph):
+def print_dependency_stats():
     dependency_stats_title = "=   Dependency Stats   ="
     dependency_stats_title = "\n" + ("=" * len(dependency_stats_title)) + "\n" + \
             dependency_stats_title + "\n" + ("=" * len(dependency_stats_title))
     print(dependency_stats_title)
-    if graph:
-        global tbd_graph
-        graph_dependencies(time_report=False)
+    global tbd_graph
+    graph_dependencies(time_report=False)
 
     # Sim stat info
     for kernel in range(start_kernel, end_kernel + 1):
