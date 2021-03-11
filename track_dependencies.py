@@ -217,9 +217,10 @@ def main():
 
     # Note for info
     if sys.flags.interactive:
-        print("\n\n*** NOTE: Third arguement 'view' in " + \
-                "graph_dependencies(kernels=[], thread_blocks=[], view=...)" + \
-                " can show:")
+        print("\nCalling 'graph_dependencies(kernels=[], thread_blocks=[], view=...)' " + \
+                "allows you to specify which kernels \nand/or thread blocks to graph.")
+        print("\nThird arguement 'view' in " + \
+                "graph_dependencies(kernels=[], thread_blocks=[], view=...) can show:")
         print("\t'all': everything")
         print("\t'kernel': kernels and the kernels they depend on (no shown thread_block)")
         print("\t'thread-block': selected kernels and thread blocks, " + \
