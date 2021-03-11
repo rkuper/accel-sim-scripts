@@ -858,7 +858,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', path=[], name="
                     edge_match = thread_block_match and (dependency_id in path)
                     edge_checks = ((len(thread_blocks) == 0) and len(path) == 0) or \
                             (edge_match)
-                    edge_op = 'ff' if edge_checks else '0b'
+                    edge_op = 'ff' if edge_checks else '08'
                     edge_weight = '3' if (kernel_match and edge_match) else '1'
 
                     # Blue
