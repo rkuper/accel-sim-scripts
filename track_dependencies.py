@@ -190,12 +190,12 @@ def main():
     ideal_thread_block_end = time.time()
 
     # Combine the three pdfs
-    # dependencies_graph = rel_path + "dependencies.gv.pdf "
-    # kernel_graph = rel_path + "ideal_kernel_dependencies.gv.pdf "
-    # thread_block_graph = rel_path + "ideal_tb_dependencies.gv.pdf "
-    # out_graph = rel_path + "dependencies_and_paths.pdf"
-    # os.system("pdfunite " + dependencies_graph + kernel_graph + thread_block_graph + out_graph)
-    # os.system("rm -f " + dependencies_graph + kernel_graph + thread_block_graph)
+    dependencies_graph = rel_path + "dependencies.gv.pdf "
+    kernel_graph = rel_path + "ideal_kernel_dependencies.gv.pdf "
+    thread_block_graph = rel_path + "ideal_tb_dependencies.gv.pdf "
+    out_graph = rel_path + "dependencies_and_paths.pdf"
+    os.system("pdfunite " + dependencies_graph + kernel_graph + thread_block_graph + out_graph)
+    os.system("rm -f " + dependencies_graph + kernel_graph + thread_block_graph)
 
     # Timing information
     print('')
