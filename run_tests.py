@@ -22,7 +22,7 @@ def main():
     parser.add_argument("-e", "--end", help = \
             "Specify last kernel applied to all benchmark (default = inf)", default=float('inf'))
     parser.add_argument("-u", "--update", help = \
-            "Update each test (default = False)", default=False)
+            "Update each test (default = False)", action='store_true')
     args = parser.parse_args()
 
     log_file = open('run_tests.log', 'wt')

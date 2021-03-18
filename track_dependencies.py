@@ -59,7 +59,7 @@ def main():
     parser.add_argument("-d", "--depth", help = \
             "Data contains line the data was obtained from", default=1)
     parser.add_argument("-u", "--update", help = \
-            "Update json info regardless if file exits", default=1)
+            "Update json info regardless if file exits", action='store_true')
     args = parser.parse_args()
 
     # Set timing variables
