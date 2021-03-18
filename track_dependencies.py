@@ -86,8 +86,8 @@ def main():
     # Set log and json files. This also sets the relative path for all output files
     global rel_path
     current_path = './benchmarks/' + args.benchmark + '/'
-    if not os.path.exists(args.benchmark):
-        os.makedirs(args.benchmark)
+    if not os.path.exists(current_path):
+        os.makedirs(current_path)
     if not os.path.exists(current_path + args.test):
         os.makedirs(current_path + args.test)
     rel_path = current_path + args.test + '/'
