@@ -3,24 +3,24 @@ Dependency Tracker Script
 ===================================================
 Filename: track_dependencies.py
 Author: Reese Kuper
-Purpose: Compare address between kernel traces and
-the simulated addresses to find and graph kernel
-and thread block dependencies
+Purpose: Gather dependency data from a simulated
+benchmark in GPGPU-Sim in the Accel-Sim framework
+to gather 3 reports:
+    1 - Overall dependency stats/graph
+    2 - Ideal scheduling with kernels
+    3 - Ideal scheduling with thread blocks
 """""""""""""""""""""""""""""""""""""""""""""""""""
 
 import os
 import sys
-import gc
 import time
 import string
-from collections import deque
 import multiprocessing as mp
 from functools import partial
 import argparse
 import re
 from subprocess import Popen, PIPE
 import glob
-import pprint
 import json
 import networkx as nx
 from graphviz import Digraph
@@ -28,9 +28,9 @@ from graphviz import Digraph
 """""""""
  GLOBALS
 """""""""
+rel_path = 'unknown'
 sim_stats = {}
 start_kernel = 0
-rel_path = 'unknown'
 end_kernel = float('inf')
 tbd_graph = Digraph(comment='Thread Block Dependencies')
 CACHE_LINE_SIZE = 0xFFFFFFFFFFFFFF80
@@ -47,17 +47,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-b", "--benchmark", help = \
             "Specify the benchmark (ex. rnn_bench from Deepbench)")
+    parser.add_argument("-a", "--sass", help = \
+            "Specify the SASS that the traces used (ex. QV100)")
     parser.add_argument("-t", "--test", help = \
             ("Specify the benchmark parameters delimited by '_' " + \
             "(ex. train_half_8_8_1_lstm)"), default='unknown')
-    parser.add_argument("-a", "--sass", help = \
-            "Specify the SASS that the traces used (ex. QV100)")
     parser.add_argument("-s", "--start", help = \
             "Which kernel to start parsing from", default=0)
     parser.add_argument("-e", "--end", help = \
             "Which kernel to end parsing on", default=float('inf'))
     parser.add_argument("-d", "--depth", help = \
             "Data contains line the data was obtained from", default=1)
+    parser.add_argument("-u", "--update", help = \
+            "Update json info regardless if file exits", default=1)
     args = parser.parse_args()
 
     # Set timing variables
@@ -83,7 +85,7 @@ def main():
 
     # Set log and json files. This also sets the relative path for all output files
     global rel_path
-    current_path = './' + args.benchmark + '/'
+    current_path = './benchmarks/' + args.benchmark + '/'
     if not os.path.exists(args.benchmark):
         os.makedirs(args.benchmark)
     if not os.path.exists(current_path + args.test):
@@ -116,12 +118,12 @@ def main():
 
     # Make sure the kernel values are normal
     if (args.end != float('inf')) and (int(args.end) < int(args.start)):
-        print("End kernel should not be earlier than the starting kernel\n")
+        print("[WARNING] End kernel should not be earlier than the starting kernel\n")
         end_kernel = float('inf')
 
 
     # If data exists and want to use, skip getting it again
-    if json_found:
+    if json_found and (not args.update):
         sim_stats_title = "=   Getting Simulation Info From " + args.test + "   ="
         sim_stats_title = ("=" * len(sim_stats_title)) + "\n"  + \
                 sim_stats_title + "\n" + ("=" * len(sim_stats_title))
@@ -188,12 +190,12 @@ def main():
     ideal_thread_block_end = time.time()
 
     # Combine the three pdfs
-    dependencies_graph = rel_path + "dependencies.gv.pdf "
-    kernel_graph = rel_path + "ideal_kernel_dependencies.gv.pdf "
-    thread_block_graph = rel_path + "ideal_tb_dependencies.gv.pdf "
-    out_graph = rel_path + "dependencies_and_paths.pdf"
-    os.system("pdfunite " + dependencies_graph + kernel_graph + thread_block_graph + out_graph)
-    os.system("rm -f " + dependencies_graph + kernel_graph + thread_block_graph)
+    # dependencies_graph = rel_path + "dependencies.gv.pdf "
+    # kernel_graph = rel_path + "ideal_kernel_dependencies.gv.pdf "
+    # thread_block_graph = rel_path + "ideal_tb_dependencies.gv.pdf "
+    # out_graph = rel_path + "dependencies_and_paths.pdf"
+    # os.system("pdfunite " + dependencies_graph + kernel_graph + thread_block_graph + out_graph)
+    # os.system("rm -f " + dependencies_graph + kernel_graph + thread_block_graph)
 
     # Timing information
     print('')
@@ -239,43 +241,43 @@ def parse_sim_output(cuda_version, benchmark, test, sass):
     # Find beginning accel-sim-framework directory
     accelsim_dir = get_accel_sim()
     if accelsim_dir == None:
-        print("Could not find accel-sim-framework")
+        print("[ERROR] Could not find accel-sim-framework")
         return
 
     run_dir = accelsim_dir + "/sim_run_" + str(cuda_version)
     if not os.path.exists(run_dir):
-        print("Could not find sim_run_<CUDA> in " + \
+        print("[ERROR] Could not find sim_run_<CUDA> in " + \
                 "accel-sim-framework/sim_run_<CUDA>/. Did you simulate yet?")
         return
 
     benchmark_dir = run_dir + "/" + benchmark
     if not os.path.exists(benchmark_dir):
-        print("Could not find benchmark in " + \
+        print("[ERROR] Could not find benchmark in " + \
                 "accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>")
         return
 
     # The actual test is a bit harder to ensure while the test are in any order
     test_dir = get_test(benchmark_dir, test)
     if test_dir == None:
-        print("Could not find specific test in " + \
+        print("[ERROR] Could not find specific test in " + \
                 "accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>")
         return
     parse_sim_title = "=   Parsing Simulation Output   ="
     parse_sim_title = ("=" * len(parse_sim_title)) + "\n" + parse_sim_title + \
             "\n" + ("=" * len(parse_sim_title))
     print(parse_sim_title)
-    print("Using test: " + test_dir[test_dir.rfind('/') + 1:])
+    print("[ERROR] Using test: " + test_dir[test_dir.rfind('/') + 1:])
 
     sass_dir = test_dir + "/" + sass + "-SASS"
     if not os.path.exists(sass_dir):
-        print("Could not find sass in " + \
+        print("[ERROR] Could not find sass in " + \
                 "accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>/<SASS>")
         return
 
     # Now getting the specific test simulation output
     sim_file = get_test(sass_dir, (benchmark + "_" + test))
     if sim_file == None:
-        print("Could not find simulation log in " + \
+        print("[ERROR] Could not find simulation log in " + \
                 "accel-sim-framework/sim_run_<CUDA>/<BENCHMARK>/<TEST>/<SASS>/<LOG>")
         return
 
