@@ -1,0 +1,10 @@
+# Format below is:
+# benchmark
+#     |
+#     --- SASS
+#           |
+#           --- Tests
+
+rnn_bench:
+  QV100:
+      - train_half_128_64_1_gru
