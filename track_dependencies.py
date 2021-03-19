@@ -171,13 +171,15 @@ def main():
         print("Done")
 
     # Manage sim stats
-    graph_begin = time.time()
     print_dependency_stats()
-    graph_dependencies(cost=sim_stats['kernel-' + str(end_kernel)]['total_time'])
-    graph_end = time.time()
 
     # Print kernel names
     print_kernel_names()
+
+    # Print total sim cycle time
+    graph_begin = time.time()
+    total_cycle_time()
+    graph_end = time.time()
 
     # Print kernel level estimated cycle time
     ideal_kernel_begin = time.time()
@@ -511,8 +513,22 @@ def find_dependencies(kernel_name, depth, info):
 
 """""""""""""""""
 
+def total_cycle_time():
+    total_time_title = "=   " + "Total Sim Cycle Time" + "   ="
+    total_time_title = "\n" + ("=" * len(total_time_title)) + "\n" + \
+            total_time_title + "\n" + ("=" * len(total_time_title))
+    print(total_time_title)
+
+    # Graph dependency graph
+    graph_dependencies(cost=sim_stats['kernel-' + str(end_kernel)]['total_time'])
+
+    print("Sim Total Cycle Time: " + str(sim_stats[('kernel-' + str(end_kernel))]['total_time']))
+    return
+
+
+
 def kernel_estimated_time():
-    kernel_time_title = "=   " + "Ideal Kernel Cycle Times" + "   ="
+    kernel_time_title = "=   " + "Ideal Kernel Cycle Path and Time" + "   ="
     kernel_time_title = "\n" + ("=" * len(kernel_time_title)) + "\n" + \
             kernel_time_title + "\n" + ("=" * len(kernel_time_title))
     print(kernel_time_title)
@@ -596,8 +612,7 @@ def kernel_estimated_time():
             name="ideal_kernel", graph_title="Ideal Kernel Cycle Time Path", \
             cost=total_cost)
 
-    print("Ideal Total Cycle Time: " + str(total_cost))
-    print("Sim Total Cycle Time: " + str(sim_stats[('kernel-' + str(end_kernel))]['total_time']))
+    print("Ideal Kernel Cycle Time: " + str(total_cost))
     sys.stdout.flush()
     return
 
@@ -694,8 +709,7 @@ def thread_block_estimated_time():
     graph_dependencies(path=path, graph=tbd_graph, name="ideal_tb", \
             graph_title="Ideal Thread Block Cycle Time Path", cost=total_cost)
 
-    print("Ideal Total Cycle Time: " + str(total_cost))
-    print("Sim Total Cycle Time: " + str(sim_stats[('kernel-' + str(end_kernel))]['total_time']))
+    print("Ideal Thread Block Cycle Time: " + str(total_cost))
     return
 
 

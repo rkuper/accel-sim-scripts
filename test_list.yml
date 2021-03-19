@@ -13,7 +13,13 @@ rnn_bench:
       - train_half_16_4_1_gru
       - train_half_16_4_1_lstm
       - train_half_16_4_1_vanilla
+      - train_half_16_4_2_gru
+      - train_half_16_4_2_lstm
+      - train_half_16_4_2_vanilla
       - train_half_128_64_1_gru
       - train_half_256_32_1_gru
+      - train_half_256_32_2_gru
+      - train_half_256_32_2_lstm
       - train_half_512_32_1_gru
+      - train_half_512_64_2_gru
       - train_half_1024_64_1_lstm
