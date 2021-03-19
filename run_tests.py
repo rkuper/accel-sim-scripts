@@ -57,21 +57,26 @@ def main():
                 os.system("python3 track_dependencies.py" + test_args)
                 print(' Done in ' + str(round((time.time() - test_time), 4)) + "s")
 
-                # Print timings from test
-                test_log_file = "./benchmark/" + benchmark + "/" + test + "/" + test + ".log"
+                test_log_file = "./benchmarks/" + benchmark + "/" + test + "/" + test + ".log"
                 if not os.path.exists(test_log_file):
                     print("[ERROR] test log file not found\n")
                     continue
 
+                # Print timings from test
+                times = []
                 with open(test_log_file, 'r', encoding = 'utf-8') as test_log_file_fp:
                     for line in test_log_file_fp:
                         if "Cycle Time: " in line:
-                            print(line)
+                            times.insert(0, line.rstrip())
+
+                # Print times in order
+                for time_stat in times:
+                    print(time_stat)
                 print()
                 sys.stdout.flush()
 
 
-    print_total_time = 'Total Time: ' + str(round((time.time() - total_time), 4)) + "s"
+    print_total_time = 'Total Time: ' + str(round((time.time() - total_time), 1)) + "s"
     print_total_time = '\n' + "-" * len(print_total_time) + '\n' + print_total_time
     print(print_total_time)
     log_file.close()

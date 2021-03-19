@@ -205,15 +205,15 @@ def main():
     timing_title = ("=" * len(timing_title)) + "\n"  + \
         timing_title + "\n" + ("=" * len(timing_title))
     print(timing_title)
-    print("Parse Simulation Output Time: " + str(round(parse_sim_end - parse_sim_begin, 4)))
+    print("Parse Simulation Output Time: " + str(round(parse_sim_end - parse_sim_begin, 1)))
     print("Get Simulation Dependencies Time: " + str(round(sim_dependencies_end - \
-            sim_dependencies_begin, 4)))
-    print("Graph Time: " + str(round(graph_end - graph_begin, 4)))
-    print("Ideal Kernel Estimate Time: " + str(round(ideal_kernel_end - ideal_kernel_begin, 4)))
+            sim_dependencies_begin, 1)))
+    print("Graph Time: " + str(round(graph_end - graph_begin, 1)))
+    print("Ideal Kernel Estimate Time: " + str(round(ideal_kernel_end - ideal_kernel_begin, 1)))
     print("Ideal Thread Block Estimate Time: " + \
-            str(round(ideal_thread_block_end - ideal_thread_block_begin, 4)))
+            str(round(ideal_thread_block_end - ideal_thread_block_begin, 1)))
     print('---------------------------------')
-    print("Total Runtime: " + str(round((time.time() - total_begin), 4)) + "s")
+    print("Total Runtime: " + str(round((time.time() - total_begin), 1)) + "s")
 
     # Close log file
     log_file.close()
