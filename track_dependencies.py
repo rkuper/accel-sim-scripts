@@ -30,7 +30,7 @@ from graphviz import Digraph
 """""""""
 rel_path = 'unknown'
 sim_stats = {}
-start_kernel = 0
+start_kernel = 1
 end_kernel = float('inf')
 tbd_graph = Digraph(comment='Thread Block Dependencies')
 CACHE_LINE_SIZE = 0xFFFFFFFFFFFFFF80
@@ -53,7 +53,7 @@ def main():
             ("Specify the benchmark parameters delimited by '_' " + \
             "(ex. train_half_8_8_1_lstm)"), default='unknown')
     parser.add_argument("-s", "--start", help = \
-            "Which kernel to start parsing from", default=1)
+            "Which kernel to start parsing from", default="1")
     parser.add_argument("-e", "--end", help = \
             "Which kernel to end parsing on", default=float('inf'))
     parser.add_argument("-d", "--depth", help = \
