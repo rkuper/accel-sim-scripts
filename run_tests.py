@@ -18,7 +18,7 @@ def main():
     parser.add_argument("-d", "--depth", help = \
             "Specify depth applied to all benchmark (default = 2)", default=2)
     parser.add_argument("-s", "--start", help = \
-            "Specify start kernel applied to all benchmark (default = 0)", default=0)
+            "Specify start kernel applied to all benchmark (default = 1)", default=1)
     parser.add_argument("-e", "--end", help = \
             "Specify last kernel applied to all benchmark (default = inf)", default=float('inf'))
     parser.add_argument("-u", "--update", help = \
