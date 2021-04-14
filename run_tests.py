@@ -23,6 +23,8 @@ def main():
             "Specify last kernel applied to all benchmark (default = inf)", default=float('inf'))
     parser.add_argument("-u", "--update", help = \
             "Update each test (default = False)", action='store_true')
+    parser.add_argument("-i", "--independent", help = \
+            "Update each test (default = False)", action='store_true')
     args = parser.parse_args()
 
     log_file = open('run_tests.log', 'wt')
@@ -40,6 +42,8 @@ def main():
         base_args += ' -e ' + args.end
     if args.update:
         base_args += ' -u '
+    if args.independent:
+        base_args += ' -i '
 
     total_time = time.time()
     for benchmark in tests:

@@ -24,6 +24,8 @@ import glob
 import json
 import networkx as nx
 from graphviz import Digraph
+import pydot
+import pprint
 
 """""""""
  GLOBALS
@@ -34,6 +36,7 @@ start_kernel = 1
 end_kernel = float('inf')
 tbd_graph = Digraph(comment='Thread Block Dependencies')
 CACHE_LINE_SIZE = 0xFFFFFFFFFFFFFF80
+independent = False
 
 
 
@@ -60,6 +63,8 @@ def main():
             "Data contains line the data was obtained from", default=1)
     parser.add_argument("-u", "--update", help = \
             "Update json info regardless if file exits", action='store_true')
+    parser.add_argument("-i", "--independent", help = \
+            "Track fully independent thread blocks in graph", action='store_true')
     args = parser.parse_args()
 
     # Set timing variables
@@ -111,10 +116,11 @@ def main():
     # Make sure depth is not bad
     depth = 1 if int(args.depth) < 1 else int(args.depth)
 
-    # Get global values for starting and ending kernel traces
-    global start_kernel, end_kernel
+    # Get global values for starting, ending kernel traces, and track independent thread blocks
+    global start_kernel, end_kernel, independent
     start_kernel = int(args.start)
     end_kernel = float('inf') if (args.end == float('inf')) else int(args.end)
+    independent = args.independent
 
     # Make sure the kernel values are normal
     if (args.end != float('inf')) and (int(args.end) < int(args.start)):
@@ -771,6 +777,13 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', path=[], name="
                         needed_info[kernel_dependency]["thread_blocks"].append(\
                                 thread_block_dependency)
 
+            print(independent)
+            if independent:
+                for thread_block in sim_stats[kernel_name]["thread_blocks"]:
+                    thread_block_id = kernel_name + "_" + thread_block
+                    if thread_block_id not in needed_info[kernel_name]["dependencies"] and \
+                            thread_block not in needed_info[kernel_name]["thread_blocks"]:
+                        needed_info[kernel_name]["thread_blocks"].append(thread_block)
 
     # Begin creating the graph
     graph.clear()
@@ -785,7 +798,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', path=[], name="
         title += 'kernels=' + kernel_description + ', thread_blocks=' + \
             thread_blocks_description + ', view=' + view
     title += '<br/><br/><br/></font>>'
-    graph.attr(labelloc="t", label=title)
+    graph.attr(labelloc="t", label=title, bgcolor="#FFFFFF00")
 
     # For 'thread_block' or 'all' mode
     if view != 'kernel':
@@ -802,7 +815,10 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', path=[], name="
                         else '#f7211640'
                 kernel_width = '5' if (kernel in kernels) else '3'
                 short_kernel_name = sim_stats[kernel_name]["kernel_name"].split('_')
-                short_kernel_name = short_kernel_name[0] + short_kernel_name[1] + \
+                if len(short_kernel_name) < 3:
+                    short_kernel_name = sim_stats[kernel_name]["kernel_name"]
+                else:
+                    short_kernel_name = short_kernel_name[0] + short_kernel_name[1] + \
                         '-' + short_kernel_name[2]
                 kernel_label = '<<br/><font point-size="20"><b>' + kernel_name + \
                         '</b></font>'
@@ -835,7 +851,7 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', path=[], name="
                             style="rounded,filled", color="black", \
                             fillcolor=node_color, penwidth=node_width)
 
-                if (len(needed_info[kernel_name]["dependencies"]) == 0) or \
+                if (len(needed_info[kernel_name]["thread_blocks"]) != 0) or \
                         (view == 'thread_block'):
                     for thread_block in needed_info[kernel_name]["thread_blocks"]:
                         test_block_name = kernel_name + '_' + thread_block
@@ -900,7 +916,10 @@ def graph_dependencies(kernels=[], thread_blocks=[], view='all', path=[], name="
             kernel = int(kernel_name.split('-')[1])
             kernel_match = (kernel in kernels) or (len(kernels) == 0)
             short_kernel_name = sim_stats[kernel_name]["kernel_name"].split('_')
-            short_kernel_name = short_kernel_name[0] + short_kernel_name[1] + \
+            if len(short_kernel_name) < 3:
+                short_kernel_name = sim_stats[kernel_name]["kernel_name"]
+            else:
+                short_kernel_name = short_kernel_name[0] + short_kernel_name[1] + \
                     '-' + short_kernel_name[2]
             kernel_label = '<<br/><font point-size="20"><b>' + kernel_name + \
                     '</b></font>'

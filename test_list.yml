@@ -5,21 +5,44 @@
 #           |
 #           --- Tests
 
-rnn_bench:
-  QV100:
-      - train_half_4_4_1_gru
-      - train_half_4_4_1_lstm
-      - train_half_4_4_1_vanilla
-      - train_half_16_4_1_gru
-      - train_half_16_4_1_lstm
-      - train_half_16_4_1_vanilla
-      - train_half_16_4_2_gru
-      - train_half_16_4_2_lstm
-      - train_half_16_4_2_vanilla
-      - train_half_128_64_1_gru
-      - train_half_256_32_1_gru
-      - train_half_256_32_2_gru
-      - train_half_256_32_2_lstm
-      - train_half_512_32_1_gru
-      - train_half_512_64_2_gru
-      # - train_half_1024_64_1_lstm
+# rnn_bench:
+#   QV100:
+#       - train_half_4_4_1_gru
+#       - train_half_4_4_1_lstm
+#       - train_half_4_4_1_vanilla
+#       - train_half_16_4_1_gru
+#       - train_half_16_4_1_lstm
+#       - train_half_16_4_1_vanilla
+#       - train_half_16_4_2_gru
+#       - train_half_16_4_2_lstm
+#       - train_half_16_4_2_vanilla
+#       - train_half_128_64_1_gru
+#       - train_half_256_32_1_gru
+#       - train_half_256_32_2_gru
+#       - train_half_256_32_2_lstm
+#       - train_half_512_32_1_gru
+#       - train_half_512_64_2_gru
+#       - train_half_1024_32_1_lstm
+#       - train_half_1024_4_1_lstm
+#       - train_half_1024_4_2_lstm
+#       - train_half_1024_64_1_lstm
+#       - train_half_1024_64_1_gru
+
+# conv_bench:
+#   QV100:
+#       - inference_half_700_161_1_1_32_20_5_0_0_2_2
+#       - inference_half_700_161_1_2_32_20_5_0_0_2_2
+#       - inference_half_341_79_32_1_32_10_5_0_0_2_2
+#       - inference_half_480_48_1_1_16_3_3_1_1_1_1
+
+benchmark-1:
+    QV100:
+        - NOARGS
+
+benchmark-2:
+    QV100:
+        - NOARGS
+
+benchmark-3:
+    QV100:
+        - NOARGS
